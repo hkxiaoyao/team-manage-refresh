@@ -4,11 +4,11 @@
 """
 import logging
 import asyncio
+import traceback
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
-import traceback
 
 from app.models import RedemptionCode, RedemptionRecord, Team
 from app.services.redemption import RedemptionService
@@ -42,7 +42,6 @@ class RedeemFlowService:
         """
         try:
             # 1. 验证兑换码
-            # validate_code 内部包含 SELECT, 可能包含状态更新(naive)
             validate_result = await self.redemption_service.validate_code(code, db_session)
 
             if not validate_result["success"]:
@@ -54,7 +53,7 @@ class RedeemFlowService:
                     "error": validate_result["error"]
                 }
             
-            # 如果是已经标记为过期了（validate_code 自动触发了过期状态检测并更新了对象）
+            # 如果是已经标记为过期了
             if not validate_result["valid"] and validate_result.get("reason") == "兑换码已过期 (超过首次兑换截止时间)":
                 try:
                     await db_session.commit()
@@ -137,7 +136,7 @@ class RedeemFlowService:
                     "error": reason
                 }
 
-            logger.info(f"自动选择 Team: {team.id} (过期时间: {team.expires_at})")
+            logger.info(f"自动选择 Team: {team.id}")
 
             return {
                 "success": True,
@@ -168,150 +167,135 @@ class RedeemFlowService:
         current_target_team_id = team_id
 
         for attempt in range(max_retries):
-            logger.info(f"兑换尝试 {attempt + 1}/{max_retries} (Code: {code}, Email: {email}, Manual Team: {team_id})")
+            logger.info(f"兑换尝试 {attempt + 1}/{max_retries} (Code: {code}, Email: {email})")
             
             try:
-                # 0. 清理先前可能的遗留状态
+                # 0. 确保 session 状态干净。如果上一轮失败且没能正确回滚，这里兜底。
                 if db_session.in_transaction():
                     await db_session.rollback()
 
-                # 1. 验证和初步检查
-                # 使用 select ... with_for_update 锁定，防止并发重兑
-                stmt = select(RedemptionCode).where(RedemptionCode.code == code).with_for_update()
-                res = await db_session.execute(stmt)
-                rc = res.scalar_one_or_none()
+                # *** 重要：将整个流程包裹在一个 begin() 中，解决 "A transaction is already begun" 报错 ***
+                async with db_session.begin():
+                    # 1. 验证和初步检查 (WITH FOR UPDATE 锁定码)
+                    stmt = select(RedemptionCode).where(RedemptionCode.code == code).with_for_update()
+                    res = await db_session.execute(stmt)
+                    rc = res.scalar_one_or_none()
 
-                if not rc:
-                    return {"success": False, "error": "兑换码不存在"}
+                    if not rc:
+                        return {"success": False, "error": "兑换码不存在"}
+                    
+                    # 检查状态
+                    if rc.status not in ["unused", "warranty_active"]:
+                        if rc.status == "used":
+                            # 质保重用验证。注意：内部不能再调用其自有的 commit()。
+                            warranty_check = await self.warranty_service.validate_warranty_reuse(
+                                db_session, code, email
+                            )
+                            if not warranty_check.get("can_reuse"):
+                                return {"success": False, "error": warranty_check.get("reason") or "兑换码已使用"}
+                            logger.info(f"验证通过: 允许质保重复兑换 ({email})")
+                        else:
+                            return {"success": False, "error": f"兑换码状态无效: {rc.status}"}
+
+                    # 2. 确定目标 Team
+                    team_id_final = current_target_team_id
+                    if not team_id_final:
+                        select_res = await self.select_team_auto(db_session)
+                        if not select_res["success"]:
+                            return {"success": False, "error": select_res["error"]}
+                        team_id_final = select_res["team_id"]
+
+                    # 3. 锁定 Team 并执行核心逻辑
+                    stmt = select(Team).where(Team.id == team_id_final).with_for_update()
+                    res = await db_session.execute(stmt)
+                    target_team = res.scalar_one_or_none()
+                    
+                    if not target_team or target_team.status != "active":
+                        raise Exception(f"目标 Team {team_id_final} 不可用")
+                    
+                    if target_team.current_members >= target_team.max_members:
+                        target_team.status = "full"
+                        raise Exception("该 Team 已满, 请选择其他 Team 尝试")
+
+                    # 获取 Token
+                    access_token = await self.team_service.ensure_access_token(target_team, db_session)
+                    if not access_token:
+                        raise Exception("获取 Team 访问权限失败，账户状态异常")
+
+                    # 发送邀请
+                    invite_res = await self.chatgpt_service.send_invite(
+                        access_token, target_team.account_id, email, db_session,
+                        identifier=target_team.email
+                    )
+                    
+                    if not invite_res["success"]:
+                        err = invite_res.get("error", "邀请失败")
+                        if any(kw in str(err).lower() for kw in ["maximum number of seats", "full"]):
+                            target_team.status = "full"
+                            raise Exception("该 Team 席位已达到上限，请重试")
+                        raise Exception(err)
+
+                    # 4. 更新数据库状态
+                    rc.status = "used"
+                    rc.used_by_email = email
+                    rc.used_team_id = team_id_final
+                    rc.used_at = get_now()
+                    if rc.has_warranty:
+                        days = rc.warranty_days or 30
+                        rc.warranty_expires_at = get_now() + timedelta(days=days)
+
+                    # 创建记录
+                    record = RedemptionRecord(
+                        email=email,
+                        code=code,
+                        team_id=team_id_final,
+                        account_id=target_team.account_id,
+                        is_warranty_redemption=rc.has_warranty
+                    )
+                    db_session.add(record)
+                    
+                    # 更新成员数
+                    target_team.current_members += 1
+                    if target_team.current_members >= target_team.max_members:
+                        target_team.status = "full"
+
+                # 事务完成提交
+                logger.info(f"兑换核心步骤执行成功: {email} -> Team {team_id_final}")
                 
-                # 检查状态
-                if rc.status not in ["unused", "warranty_active"]:
-                    if rc.status == "used":
-                        # 检查是否为质保期重复使用
-                        warranty_check = await self.warranty_service.validate_warranty_reuse(
-                            db_session, code, email
-                        )
-                        if not warranty_check.get("can_reuse"):
-                            return {"success": False, "error": warranty_check.get("reason") or "兑换码已使用"}
-                        logger.info(f"验证通过: 允许质保重复兑换 ({email})")
-                    else:
-                        return {"success": False, "error": f"兑换码状态无效: {rc.status}"}
-
-                # 2. 确定目标 Team
-                team_id_final = current_target_team_id
-                if not team_id_final:
-                    select_res = await self.select_team_auto(db_session)
-                    if not select_res["success"]:
-                        return {"success": False, "error": select_res["error"]}
-                    team_id_final = select_res["team_id"]
-
-                # 3. 执行核心兑换逻辑 (事务保证原子性)
-                target_team = None
+                # 5. 后置异步任务
+                await asyncio.sleep(2)
+                await self.team_service.sync_team_info(team_id_final, db_session)
                 try:
-                    async with db_session.begin():
-                        # A. 再次锁定以确保安全
-                        stmt = select(Team).where(Team.id == team_id_final).with_for_update()
-                        res = await db_session.execute(stmt)
-                        target_team = res.scalar_one_or_none()
-                        
-                        if not target_team or target_team.status != "active":
-                            raise Exception(f"目标 Team {team_id_final} 不可用")
-                        
-                        if target_team.current_members >= target_team.max_members:
-                            target_team.status = "full"
-                            raise Exception("该 Team 已满, 请选择其他 Team 尝试")
-
-                        # B. 获取并验证 Access Token
-                        access_token = await self.team_service.ensure_access_token(target_team, db_session)
-                        if not access_token:
-                            raise Exception("获取 Team 访问权限失败，账户状态异常")
-
-                        # C. 发送 ChatGPT API 邀请
-                        invite_res = await self.chatgpt_service.send_invite(
-                            access_token, target_team.account_id, email, db_session,
-                            identifier=target_team.email
-                        )
-                        
-                        if not invite_res["success"]:
-                            err = invite_res.get("error", "邀请失败")
-                            if any(kw in str(err).lower() for kw in ["maximum number of seats", "full"]):
-                                target_team.status = "full"
-                                raise Exception("该 Team 席位已达到上限，请重试")
-                            raise Exception(err)
-
-                        # D. 更新本地数据库状态
-                        # 重新获取锁 (由于 ensure_access_token 内部可能有提交)
-                        rc_stmt = select(RedemptionCode).where(RedemptionCode.code == code).with_for_update()
-                        rc_res = await db_session.execute(rc_stmt)
-                        rc_obj = rc_res.scalar_one()
-                        
-                        rc_obj.status = "used"
-                        rc_obj.used_by_email = email
-                        rc_obj.used_team_id = team_id_final
-                        rc_obj.used_at = get_now()
-                        if rc_obj.has_warranty:
-                            # 提前计算过期时间
-                            days = rc_obj.warranty_days or 30
-                            rc_obj.warranty_expires_at = get_now() + timedelta(days=days)
-
-                        # 创建记录
-                        record = RedemptionRecord(
-                            email=email,
-                            code=code,
-                            team_id=team_id_final,
-                            account_id=target_team.account_id,
-                            is_warranty_redemption=rc_obj.has_warranty
-                        )
-                        db_session.add(record)
-                        
-                        # 同步更新 Team 成员计数
-                        target_team.current_members += 1
-                        if target_team.current_members >= target_team.max_members:
-                            target_team.status = "full"
-                    
-                    # 提交成功
-                    logger.info(f"兑换成功: {email} -> Team {team_id_final}")
+                    asyncio.create_task(notification_service.check_and_notify_low_stock())
+                except:
+                    pass
                 
-                    # 4. 后置确认 (异步同步或短时等待同步)
-                    await asyncio.sleep(2)
-                    sync_res = await self.team_service.sync_team_info(team_id_final, db_session)
-                    
-                    # 5. 库存通知
-                    try:
-                        asyncio.create_task(notification_service.check_and_notify_low_stock())
-                    except:
-                        pass
-                    
-                    return {
-                        "success": True,
-                        "message": "兑换成功！邀请链接已发送至您的邮箱，请及时查收。",
-                        "team_info": {
-                            "id": team_id_final,
-                            "name": target_team.team_name if target_team else f"Team {team_id_final}",
-                            "email": target_team.email if target_team else ""
-                        }
+                return {
+                    "success": True,
+                    "message": "兑换成功！邀请链接已发送至您的邮箱，请及时查收。",
+                    "team_info": {
+                        "id": team_id_final,
+                        "name": target_team.team_name if target_team else f"Team {team_id_final}",
+                        "email": target_team.email if target_team else ""
                     }
-
-                except Exception as biz_e:
-                    last_error = str(biz_e)
-                    logger.warning(f"核心逻辑出错: {biz_e}")
-                    if team_id and any(kw in last_error for kw in ["已满", "上限", "不可用"]):
-                        return {"success": False, "error": last_error}
-                    raise biz_e
+                }
 
             except Exception as e:
                 last_error = str(e)
-                logger.error(f"兑换迭代失败 ({attempt+1}): {e}")
+                logger.error(f"兑换迭代失败 ({attempt+1}): {last_error}")
                 
-                if db_session.in_transaction():
-                    await db_session.rollback()
+                try:
+                    if db_session.in_transaction():
+                        await db_session.rollback()
+                except:
+                    pass
                 
-                # 确定不可重试的错误
+                # 判读是否中断重试
                 if any(kw in last_error for kw in ["不存在", "已使用", "已有正在使用", "质保已过期"]):
                     return {"success": False, "error": last_error}
 
-                if not team_id and ("已满" in last_error or "上限" in last_error or "seats" in last_error.lower()):
-                    current_target_team_id = None # 下次尝试自动选别的
+                if not team_id and ("已满" in last_error or "seats" in last_error.lower()):
+                    current_target_team_id = None
                 
                 if attempt < max_retries - 1:
                     await asyncio.sleep(1.5 * (attempt + 1))
@@ -321,35 +305,6 @@ class RedeemFlowService:
             "success": False,
             "error": f"兑换失败次数过多。最后报错: {last_error}"
         }
-
-    async def _rollback_redemption(self, email: str, code: str, team_id: int, db_session: AsyncSession):
-        """简单的回滚清理逻辑"""
-        try:
-            if db_session.in_transaction():
-                await db_session.rollback()
-            
-            async with db_session.begin():
-                # 删除记录
-                stmt = delete(RedemptionRecord).where(
-                    RedemptionRecord.code == code,
-                    RedemptionRecord.email == email
-                )
-                await db_session.execute(stmt)
-                
-                # 恢复码状态
-                stmt = select(RedemptionCode).where(RedemptionCode.code == code).with_for_update()
-                res = await db_session.execute(stmt)
-                rc = res.scalar_one_or_none()
-                if rc:
-                    rc.status = "unused"
-                    rc.used_by_email = None
-                    rc.used_team_id = None
-                    rc.used_at = None
-                    if rc.has_warranty:
-                        rc.warranty_expires_at = None
-            logger.info(f"回滚兑换记录完成: {email}, {code}")
-        except Exception as e:
-            logger.error(f"回滚兑换记录失败: {e}")
 
 # 创建全局实例
 redeem_flow_service = RedeemFlowService()
