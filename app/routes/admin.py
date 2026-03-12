@@ -3,6 +3,7 @@
 处理管理员面板的所有页面和操作
 """
 import logging
+import re
 from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -49,7 +50,7 @@ class TeamImportRequest(BaseModel):
 
 class OAuthAuthorizeRequest(BaseModel):
     """生成 OAuth 授权链接请求"""
-    client_id: str = Field(..., description="OAuth Client ID")
+    client_id: str = Field("app_EMoamEEZ73f0CkXaXp7hrann", description="OAuth Client ID")
     redirect_uri: str = Field("http://localhost:1455/auth/callback", description="回调地址")
     scope: str = Field("openid email profile offline_access", description="OAuth scope")
     audience: Optional[str] = Field(None, description="audience（可选）")
@@ -62,7 +63,7 @@ class OAuthCallbackParseRequest(BaseModel):
     callback_text: str = Field(..., description="完整回调 URL 或回调文本")
     code_verifier: Optional[str] = Field(None, description="PKCE code_verifier")
     expected_state: Optional[str] = Field(None, description="期望的 state 值")
-    client_id: Optional[str] = Field(None, description="兜底 client_id")
+    client_id: Optional[str] = Field("app_EMoamEEZ73f0CkXaXp7hrann", description="兜底 client_id")
     redirect_uri: str = Field("http://localhost:1455/auth/callback", description="回调地址")
 
 class AddMemberRequest(BaseModel):
@@ -411,6 +412,27 @@ async def parse_openai_oauth_callback(
             for k, v in source.items():
                 if v:
                     merged[k] = v[0]
+
+        # 兼容非标准粘贴内容（如日志文本/JSON片段）
+        if not merged:
+            pairs = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)=([^\s&]+)', text)
+            for k, v in pairs:
+                if k not in merged:
+                    merged[k] = v
+
+        # 兜底直接提取 token/client_id
+        if not merged.get("access_token"):
+            m = re.search(r'(eyJ[a-zA-Z0-9_\-.]+\.[a-zA-Z0-9_\-.]+\.[a-zA-Z0-9_\-.]+)', text)
+            if m:
+                merged["access_token"] = m.group(1)
+        if not merged.get("refresh_token"):
+            m = re.search(r'(rt[_-][A-Za-z0-9._-]+)', text)
+            if m:
+                merged["refresh_token"] = m.group(1)
+        if not merged.get("client_id"):
+            m = re.search(r'(app_[A-Za-z0-9]+)', text)
+            if m:
+                merged["client_id"] = m.group(1)
 
         if payload.expected_state and merged.get("state") and merged.get("state") != payload.expected_state:
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"success": False, "error": "state 不匹配，请重新生成授权链接"})
