@@ -5,7 +5,7 @@ Team 管理服务
 import logging
 import asyncio
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 class TeamService:
     """Team 管理服务类"""
+
+    PROACTIVE_REFRESH_WINDOW_HOURS = 2
 
     def __init__(self):
         """初始化 Team 管理服务"""
@@ -245,6 +247,52 @@ class TeamService:
             await db_session.commit()
         return None
 
+    async def proactive_refresh_tokens(
+        self,
+        db_session: AsyncSession,
+        refresh_window_hours: Optional[int] = None
+    ) -> Dict[str, int]:
+        """在 AT 过期前自动预刷新 Token。"""
+        window_hours = refresh_window_hours or self.PROACTIVE_REFRESH_WINDOW_HOURS
+        threshold_time = get_now() + timedelta(hours=window_hours)
+
+        stmt = select(Team)
+        result = await db_session.execute(stmt)
+        teams = result.scalars().all()
+
+        stats = {"total": len(teams), "refreshed": 0, "skipped": 0, "failed": 0}
+
+        for team in teams:
+            if team.status == "banned":
+                stats["skipped"] += 1
+                continue
+
+            if not team.refresh_token_encrypted and not team.session_token_encrypted:
+                stats["skipped"] += 1
+                continue
+
+            try:
+                access_token = encryption_service.decrypt_token(team.access_token_encrypted)
+                expire_at = self.jwt_parser.get_expiration_time(access_token)
+            except Exception as e:
+                logger.warning(f"Team {team.id} Token 解析失败,尝试直接刷新: {e}")
+                expire_at = None
+
+            if expire_at and expire_at > threshold_time:
+                stats["skipped"] += 1
+                continue
+
+            new_token = await self.ensure_access_token(team, db_session, force_refresh=True)
+            if new_token:
+                stats["refreshed"] += 1
+                logger.info(f"✅ Team {team.id} ({team.email}) Token 预刷新成功")
+            else:
+                stats["failed"] += 1
+                logger.warning(f"❌ Team {team.id} ({team.email}) Token 预刷新失败")
+
+        await db_session.commit()
+        return stats
+
     async def import_team_single(
         self,
         access_token: Optional[str],
@@ -279,6 +327,15 @@ class TeamService:
             
             if not is_at_valid:
                 logger.info("导入时 AT 缺失或过期, 尝试使用 ST/RT 刷新")
+
+                # 未提供 client_id 时，尝试使用系统设置中的默认值
+                if refresh_token and not client_id:
+                    from app.services.settings import settings_service
+                    client_id = await settings_service.get_setting(db_session, "token_refresh_client_id", "")
+                    client_id = client_id.strip() if client_id else None
+                    if client_id:
+                        logger.info("导入时使用系统设置中的默认 OAuth Client ID")
+
                 # 尝试 session_token
                 if session_token:
                     refresh_result = await self.chatgpt_service.refresh_access_token_with_session_token(
@@ -1075,6 +1132,98 @@ class TeamService:
                 "success": False,
                 "message": None,
                 "error": f"同步失败: {str(e)}"
+            }
+
+    async def sync_teams_due_for_periodic_refresh(
+        self,
+        db_session: AsyncSession,
+        refresh_interval_days: int = 7
+    ) -> Dict[str, Any]:
+        """按周期（默认 7 天）自动刷新 Team 状态。"""
+        try:
+            stmt = select(Team)
+            result = await db_session.execute(stmt)
+            teams = result.scalars().all()
+
+            if not teams:
+                return {
+                    "success": True,
+                    "total": 0,
+                    "due": 0,
+                    "synced": 0,
+                    "failed": 0,
+                    "skipped": 0,
+                    "results": [],
+                    "error": None
+                }
+
+            now = get_now()
+            due_teams = []
+            skipped = 0
+
+            for team in teams:
+                if team.status == "banned":
+                    skipped += 1
+                    continue
+
+                base_time = team.last_sync or team.created_at
+
+                # created_at 为空时保守处理为“需要同步”
+                if not base_time:
+                    due_teams.append(team)
+                    continue
+
+                next_refresh_at = base_time + timedelta(days=refresh_interval_days)
+                if now >= next_refresh_at:
+                    due_teams.append(team)
+                else:
+                    skipped += 1
+
+            synced = 0
+            failed = 0
+            results = []
+
+            for team in due_teams:
+                sync_result = await self.sync_team_info(team.id, db_session)
+                if sync_result["success"]:
+                    synced += 1
+                else:
+                    failed += 1
+
+                results.append({
+                    "team_id": team.id,
+                    "email": team.email,
+                    "success": sync_result["success"],
+                    "message": sync_result.get("message"),
+                    "error": sync_result.get("error")
+                })
+
+            logger.info(
+                "周期状态同步完成: total=%s due=%s synced=%s failed=%s skipped=%s interval_days=%s",
+                len(teams), len(due_teams), synced, failed, skipped, refresh_interval_days
+            )
+
+            return {
+                "success": True,
+                "total": len(teams),
+                "due": len(due_teams),
+                "synced": synced,
+                "failed": failed,
+                "skipped": skipped,
+                "results": results,
+                "error": None
+            }
+        except Exception as e:
+            logger.error(f"周期状态同步失败: {e}")
+            return {
+                "success": False,
+                "total": 0,
+                "due": 0,
+                "synced": 0,
+                "failed": 0,
+                "skipped": 0,
+                "results": [],
+                "error": f"周期状态同步失败: {str(e)}"
             }
 
     async def sync_all_teams(
