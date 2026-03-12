@@ -226,6 +226,8 @@ async function generateOAuthAuthorizeLink() {
     const defaultClientId = 'app_EMoamEEZ73f0CkXaXp7hrann';
     const clientId = formClientId || defaultClientId;
 
+    showToast('正在生成并复制授权链接...', 'info');
+
     try {
         const result = await apiCall('/admin/oauth/openai/authorize', {
             method: 'POST',
@@ -808,4 +810,11 @@ async function deleteMember(teamId, userId, email, inModal = false) {
     } catch (error) {
         showToast('网络错误', 'error');
     }
+}
+
+
+// 确保内联 onclick 在任何加载模式下都可调用
+if (typeof window !== 'undefined') {
+    window.generateOAuthAuthorizeLink = generateOAuthAuthorizeLink;
+    window.parseOAuthCallbackAndFill = parseOAuthCallbackAndFill;
 }
