@@ -1195,7 +1195,7 @@ async function generateWelfareCode() {
         if (codeValueEl) codeValueEl.value = newCode;
 
         const codeTextEl = document.getElementById('welfareCommonCodeText');
-        if (codeTextEl) codeTextEl.textContent = newCode || '-';
+        if (codeTextEl) { codeTextEl.textContent = newCode || '-'; codeTextEl.title = newCode || ''; }
 
         const usageTextEl = document.getElementById('welfareCodeUsageText');
         if (usageTextEl) {

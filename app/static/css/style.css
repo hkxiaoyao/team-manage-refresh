@@ -1664,11 +1664,50 @@ body {
 }
 
 
+
+
+.settings-top-nav {
+    position: sticky;
+    top: 10px;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+    padding: 0.7rem;
+    border: 1px solid var(--border-main);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+    backdrop-filter: blur(6px);
+}
+
+.settings-nav-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-main);
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: var(--transition-base);
+}
+
+.settings-nav-pill:hover {
+    color: var(--text-main);
+    border-color: var(--primary);
+    background: var(--primary-soft);
+}
+
 .welfare-code-value {
     margin-top: 0.2rem;
-    font-size: 0.82rem;
-    line-height: 1.25;
+    font-size: 0.78rem;
+    line-height: 1.2;
     color: var(--text-main);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    word-break: break-all;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }

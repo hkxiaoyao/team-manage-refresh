@@ -399,7 +399,6 @@ python init_db.py
 
 本仓库当前采用 [MIT License](./LICENSE)。
 
-
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
