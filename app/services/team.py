@@ -550,8 +550,8 @@ class TeamService:
                     beta_settings = settings_result["data"].get("beta_settings", {})
                     device_code_auth_enabled = beta_settings.get("codex_device_code_auth", False)
 
-                # 确定状态和最大成员数 (默认 6)
-                max_members = 6
+                # 确定状态和最大成员数 (默认 5)
+                max_members = 5
                 status = "active"
                 if current_members >= max_members:
                     status = "full"

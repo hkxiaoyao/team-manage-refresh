@@ -1191,12 +1191,17 @@ async function generateWelfareCode() {
         if (!result.success) throw new Error(result.error || '生成失败');
 
         const codeValueEl = document.getElementById('welfareCommonCodeValue');
-        if (codeValueEl) codeValueEl.value = result.code || '';
+        const newCode = result.code || '';
+        if (codeValueEl) codeValueEl.value = newCode;
+
+        const codeTextEl = document.getElementById('welfareCommonCodeText');
+        if (codeTextEl) codeTextEl.textContent = newCode || '-';
 
         const usageTextEl = document.getElementById('welfareCodeUsageText');
         if (usageTextEl) {
-            const remaining = typeof result.remaining === 'number' ? result.remaining : (result.limit || 0);
+            const used = typeof result.used === 'number' ? result.used : 0;
             const limit = typeof result.limit === 'number' ? result.limit : 0;
+            const remaining = typeof result.remaining === 'number' ? result.remaining : Math.max(limit - used, 0);
             usageTextEl.textContent = `剩余次数 ${remaining} / ${limit}`;
         }
 

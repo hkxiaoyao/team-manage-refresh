@@ -1662,3 +1662,13 @@ body {
     font-size: 0.75rem;
     color: var(--text-muted);
 }
+
+
+.welfare-code-value {
+    margin-top: 0.2rem;
+    font-size: 0.82rem;
+    line-height: 1.25;
+    color: var(--text-main);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    word-break: break-all;
+}

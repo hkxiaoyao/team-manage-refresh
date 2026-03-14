@@ -80,10 +80,6 @@ git pull && docker compose down && docker compose up -d --build
   - 管理员启用公告后，用户打开兑换页会自动弹出公告
   - 公告内容支持 Markdown（标题、列表、加粗、链接）
 
-- **公告弹窗**
-  - 管理员启用公告后，用户打开兑换页会自动弹出公告
-  - 公告内容支持 Markdown（标题、列表、加粗、链接）
-
 ## 🛠️ 技术栈
 
 - **后端框架**: FastAPI 0.109+
@@ -402,6 +398,7 @@ python init_db.py
 ## 📄 许可证
 
 本仓库当前采用 [MIT License](./LICENSE)。
+
 
 ## 🤝 贡献
 
