@@ -962,6 +962,16 @@ function copyBatchCodes() {
     copyToClipboard(codes);
 }
 
+function copyWelfareCode() {
+    const el = document.getElementById('welfareCommonCodeText');
+    const code = el ? el.textContent.trim() : '';
+    if (!code || code === '-') {
+        showToast('暂无可复制的通用兑换码', 'warning');
+        return;
+    }
+    copyToClipboard(code);
+}
+
 function downloadCodes() {
     const codes = document.getElementById('batchCodes').value;
     const blob = new Blob([codes], { type: 'text/plain' });
@@ -1169,6 +1179,38 @@ if (typeof window !== 'undefined') {
     window.parseOAuthCallbackAndFill = parseOAuthCallbackAndFill;
     window.exportOAuthJsonTemplateFile = exportOAuthJsonTemplateFile;
     window.handleJsonFileImport = handleJsonFileImport;
+    window.copyWelfareCode = copyWelfareCode;
+}
+
+
+async function generateWelfareCode() {
+    try {
+        const btn = document.getElementById('generateWelfareCodeBtn');
+        if (btn) { btn.disabled = true; }
+        const result = await apiCall('/admin/welfare/code/generate', { method: 'POST' });
+        if (!result.success) throw new Error(result.error || '生成失败');
+
+        const codeTextEl = document.getElementById('welfareCommonCodeText');
+        if (codeTextEl) codeTextEl.textContent = result.code || '-';
+
+        const usageTextEl = document.getElementById('welfareCodeUsageText');
+        if (usageTextEl) {
+            const remaining = typeof result.remaining === 'number' ? result.remaining : (result.limit || 0);
+            const limit = typeof result.limit === 'number' ? result.limit : 0;
+            usageTextEl.textContent = `剩余次数 ${remaining} / ${limit}`;
+        }
+
+        const copyBtn = document.getElementById('copyWelfareCodeBtn');
+        if (copyBtn) copyBtn.disabled = !result.code;
+
+        await copyToClipboard(result.code || '');
+        showToast(`通用兑换码已更新，剩余次数 ${result.remaining}/${result.limit}`, 'success');
+    } catch (error) {
+        showToast(error.message || '生成通用兑换码失败', 'error');
+    } finally {
+        const btn = document.getElementById('generateWelfareCodeBtn');
+        if (btn) btn.disabled = false;
+    }
 }
 
 

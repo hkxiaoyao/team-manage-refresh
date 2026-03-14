@@ -1644,3 +1644,26 @@ body {
         max-width: 100%;
     }
 }
+
+.welfare-code-card .stat-info-group {
+    min-width: 0;
+}
+
+.welfare-code-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.welfare-code-value {
+    font-size: 1rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    word-break: break-all;
+}
+
+.stat-sub-label {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}

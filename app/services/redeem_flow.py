@@ -12,7 +12,7 @@ from sqlalchemy import select, update, delete, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
 
-from app.models import RedemptionCode, RedemptionRecord, Team
+from app.models import RedemptionCode, RedemptionRecord, Team, Setting
 from app.services.redemption import RedemptionService
 from app.services.team import TeamService
 from app.services.warranty import warranty_service
@@ -319,17 +319,29 @@ class RedeemFlowService:
                                     rc.warranty_expires_at = get_now() + timedelta(days=days)
 
                             if is_virtual_welfare_code:
-                                used_raw = await settings_service.get_setting(db_session, "welfare_common_code_used_count", "0")
-                                try:
-                                    current_used = int(used_raw or 0)
-                                except Exception:
-                                    current_used = 0
-                                await settings_service.set_setting(
-                                    db_session,
-                                    "welfare_common_code_used_count",
-                                    str(current_used + 1),
-                                    "福利通用兑换码已使用次数"
+                                setting_res = await db_session.execute(
+                                    select(Setting)
+                                    .where(Setting.key == "welfare_common_code_used_count")
+                                    .with_for_update()
                                 )
+                                used_setting = setting_res.scalar_one_or_none()
+
+                                if used_setting:
+                                    try:
+                                        current_used = int((used_setting.value or "0").strip() or 0)
+                                    except Exception:
+                                        current_used = 0
+                                    used_setting.value = str(current_used + 1)
+                                else:
+                                    used_setting = Setting(
+                                        key="welfare_common_code_used_count",
+                                        value="1",
+                                        description="福利通用兑换码已使用次数"
+                                    )
+                                    db_session.add(used_setting)
+
+                                # 同步更新缓存，避免下一次校验读取到旧值
+                                settings_service._cache["welfare_common_code_used_count"] = used_setting.value
 
                             record = RedemptionRecord(
                                 email=email,

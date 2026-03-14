@@ -198,12 +198,26 @@ async def welfare_dashboard(
         team_stats = await team_service.get_stats(db, pool_type="welfare")
         remaining_spots = await team_service.get_total_available_seats(db, pool_type="welfare")
         welfare_code = await settings_service.get_setting(db, "welfare_common_code", "")
+        welfare_limit_raw = await settings_service.get_setting(db, "welfare_common_code_limit", "0")
+        welfare_used_raw = await settings_service.get_setting(db, "welfare_common_code_used_count", "0")
+
+        try:
+            welfare_limit = int(str(welfare_limit_raw or "0").strip() or 0)
+        except Exception:
+            welfare_limit = 0
+        try:
+            welfare_used = int(str(welfare_used_raw or "0").strip() or 0)
+        except Exception:
+            welfare_used = 0
 
         stats = {
             "total_teams": team_stats["total"],
             "available_teams": team_stats["available"],
             "remaining_spots": remaining_spots,
-            "welfare_code": welfare_code
+            "welfare_code": welfare_code,
+            "welfare_code_limit": welfare_limit,
+            "welfare_code_used": welfare_used,
+            "welfare_code_remaining": max(welfare_limit - welfare_used, 0),
         }
 
         return templates.TemplateResponse(
@@ -264,7 +278,7 @@ async def generate_welfare_common_code(
             "welfare_common_code_generated_at": get_now().isoformat()
         })
 
-        return JSONResponse(content={"success": True, "code": code, "limit": total_seats})
+        return JSONResponse(content={"success": True, "code": code, "limit": total_seats, "used": 0, "remaining": total_seats})
     except Exception as e:
         logger.error(f"生成福利通用兑换码失败: {e}")
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"success": False, "error": str(e)})

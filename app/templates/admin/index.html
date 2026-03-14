@@ -31,11 +31,17 @@
             <div class="stat-label">福利剩余车位</div>
         </div>
     </div>
-    <div class="stat-card stat-warning">
+    <div class="stat-card stat-warning welfare-code-card">
         <div class="stat-icon"><i data-lucide="ticket"></i></div>
         <div class="stat-info-group">
-            <div class="stat-value">{{ stats.welfare_code or '-' }}</div>
+            <div class="welfare-code-row">
+                <span class="stat-value welfare-code-value" id="welfareCommonCodeText">{{ stats.welfare_code or '-' }}</span>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="copyWelfareCode()" {% if not stats.welfare_code %}disabled{% endif %} id="copyWelfareCodeBtn">
+                    <i data-lucide="copy" style="width: 14px; height: 14px;"></i> 复制
+                </button>
+            </div>
             <div class="stat-label">通用兑换码</div>
+            <div class="stat-sub-label" id="welfareCodeUsageText">剩余次数 {{ stats.welfare_code_remaining }} / {{ stats.welfare_code_limit }}</div>
         </div>
     </div>
     {% else %}
