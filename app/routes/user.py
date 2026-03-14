@@ -37,7 +37,8 @@ async def redeem_page(
         from app.services.settings import settings_service
 
         team_service = TeamService()
-        remaining_spots = await team_service.get_total_available_seats(db)
+        remaining_spots = await team_service.get_total_available_seats(db, pool_type="normal")
+        welfare_remaining_spots = await team_service.get_total_available_seats(db, pool_type="welfare")
         announcement_enabled_raw = await settings_service.get_setting(db, "announcement_enabled", "false")
         announcement_enabled = str(announcement_enabled_raw).lower() in {"1", "true", "yes", "on"}
         announcement_markdown = await settings_service.get_setting(db, "announcement_markdown", "")
@@ -51,6 +52,7 @@ async def redeem_page(
                 "remaining_spots": remaining_spots,
                 "announcement_enabled": announcement_enabled,
                 "announcement_markdown": announcement_markdown,
+                "welfare_remaining_spots": welfare_remaining_spots,
             }
         )
 

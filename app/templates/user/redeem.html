@@ -29,7 +29,13 @@
                 {% if remaining_spots is not none %}
                 <div class="spots-badge">
                     <i data-lucide="users" style="width: 14px; height: 14px;"></i>
-                    剩余名额 <span class="seats-count">{{ remaining_spots }}</span> 位
+                    常规剩余名额 <span class="seats-count">{{ remaining_spots }}</span> 位
+                </div>
+                {% endif %}
+                {% if welfare_remaining_spots is not none %}
+                <div class="spots-badge welfare-spots-badge">
+                    <i data-lucide="heart-handshake" style="width: 14px; height: 14px;"></i>
+                    福利车位剩余 <span class="seats-count">{{ welfare_remaining_spots }}</span> 位
                 </div>
                 {% endif %}
             </header>

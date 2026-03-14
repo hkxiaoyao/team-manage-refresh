@@ -1,3 +1,8 @@
+function getCurrentPoolType() {
+    const pool = (document.body && document.body.dataset && document.body.dataset.poolType) || "normal";
+    return pool === "welfare" ? "welfare" : "normal";
+}
+
 /**
  * GPT Team 管理系统 - 通用 JavaScript
  */
@@ -488,7 +493,8 @@ async function handleSingleImport(event) {
                 session_token: sessionToken || null,
                 client_id: clientId || null,
                 email: email || null,
-                account_id: accountId || null
+                account_id: accountId || null,
+                pool_type: getCurrentPoolType()
             })
         });
 
@@ -551,7 +557,8 @@ async function handleBatchImport(event) {
             },
             body: JSON.stringify({
                 import_type: 'batch',
-                content: batchContent
+                content: batchContent,
+                pool_type: getCurrentPoolType()
             })
         });
 
@@ -689,7 +696,8 @@ async function handleJsonFileImport() {
             },
             body: JSON.stringify({
                 import_type: 'json',
-                content
+                content,
+                pool_type: getCurrentPoolType()
             })
         });
 
@@ -1121,4 +1129,21 @@ if (typeof window !== 'undefined') {
     window.parseOAuthCallbackAndFill = parseOAuthCallbackAndFill;
     window.exportOAuthJsonTemplateFile = exportOAuthJsonTemplateFile;
     window.handleJsonFileImport = handleJsonFileImport;
+}
+
+
+async function generateWelfareCode() {
+    try {
+        const btn = document.getElementById('generateWelfareCodeBtn');
+        if (btn) { btn.disabled = true; }
+        const result = await apiCall('/admin/welfare/code/generate', { method: 'POST' });
+        if (!result.success) throw new Error(result.error || '生成失败');
+        showToast(`通用兑换码已更新：${result.code}`, 'success');
+        setTimeout(() => location.reload(), 1000);
+    } catch (error) {
+        showToast(error.message || '生成通用兑换码失败', 'error');
+    } finally {
+        const btn = document.getElementById('generateWelfareCodeBtn');
+        if (btn) btn.disabled = false;
+    }
 }

@@ -146,6 +146,13 @@ body {
 
 .seats-count { font-family: 'Sora', sans-serif; font-weight: 700; }
 
+.welfare-spots-badge {
+  margin-top: 10px;
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+}
+
 .main-shell {
   max-width: 640px;
   margin: 0 auto;
