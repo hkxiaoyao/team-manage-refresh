@@ -49,6 +49,12 @@ git pull && docker compose down && docker compose up -d --build
   - **库存预警 Webhook**（基于剩余可用车位自动通知补货系统）
   - **公告通知管理**（支持 Markdown 公告，用户访问兑换页时弹窗展示）
 
+- **福利车位（独立池）**
+  - 福利 Team 与常规 Team 完全分池管理（导入、列表、兑换逻辑独立）
+  - 福利通用兑换码为 settings 管理的虚拟码（新码生成会立即使旧码失效）
+  - 福利通用码剩余次数按“可邀请席位”统计（`max_members - 1`），更贴合实际可拉人数量
+  - 控制台保留原始 Team ID 展示，福利页使用独立“编号”便于单独核对
+
 - **售后与风控能力**
   - 质保查询：支持按邮箱或兑换码追溯历史记录
   - 设备身份验证：支持用户一键开启 Device Code Auth
@@ -68,6 +74,11 @@ git pull && docker compose down && docker compose up -d --build
   - 展示可用 Team 列表
   - 手动选择或自动分配 Team
   - 自动发送 Team 邀请到用户邮箱
+  - 兑换首页显示常规车位与福利车位剩余数量
+
+- **公告弹窗**
+  - 管理员启用公告后，用户打开兑换页会自动弹出公告
+  - 公告内容支持 Markdown（标题、列表、加粗、链接）
 
 - **公告弹窗**
   - 管理员启用公告后，用户打开兑换页会自动弹出公告
@@ -176,6 +187,7 @@ python app/main.py
 - **用户兑换页面**: http://localhost:8008/
 - **管理员登录页面**: http://localhost:8008/login
 - **管理员控制台**: http://localhost:8008/admin
+- **福利车位管理页面**: http://localhost:8008/admin/welfare
 
 **默认管理员账号**:
 - 用户名: `admin`
