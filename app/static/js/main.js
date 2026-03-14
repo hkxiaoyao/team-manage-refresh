@@ -91,6 +91,17 @@ function confirmAction(message) {
     return confirm(message);
 }
 
+
+function setSingleImportMode(mode = 'quick') {
+    const quickSection = document.getElementById('oauthQuickSection');
+    const manualSection = document.getElementById('manualTokenSection');
+    if (!quickSection || !manualSection) return;
+
+    const isManual = mode === 'manual';
+    quickSection.style.display = isManual ? 'none' : 'block';
+    manualSection.style.display = isManual ? 'block' : 'none';
+}
+
 // 页面加载完成后执行
 document.addEventListener('DOMContentLoaded', function () {
     // 检查认证状态
@@ -117,6 +128,35 @@ document.addEventListener('DOMContentLoaded', function () {
             exportOAuthJsonTemplateFile();
         });
     }
+
+    const switchToManualFill = document.getElementById('switchToManualFill');
+    if (switchToManualFill) {
+        switchToManualFill.addEventListener('click', () => setSingleImportMode('manual'));
+    }
+
+    const switchToQuickToken = document.getElementById('switchToQuickToken');
+    if (switchToQuickToken) {
+        switchToQuickToken.addEventListener('click', () => setSingleImportMode('quick'));
+    }
+
+    const chooseJsonFileBtn = document.getElementById('chooseJsonFileBtn');
+    const jsonImportFile = document.getElementById('jsonImportFile');
+    if (chooseJsonFileBtn && jsonImportFile) {
+        chooseJsonFileBtn.addEventListener('click', () => jsonImportFile.click());
+        jsonImportFile.addEventListener('change', async () => {
+            const fileNameNode = document.getElementById('jsonImportFileName');
+            if (fileNameNode) {
+                fileNameNode.textContent = jsonImportFile.files && jsonImportFile.files[0]
+                    ? `已选择：${jsonImportFile.files[0].name}`
+                    : '支持单对象、对象数组，或 {"teams": [...]} 格式';
+            }
+            if (jsonImportFile.files && jsonImportFile.files.length > 0) {
+                await handleJsonFileImport();
+            }
+        });
+    }
+
+    setSingleImportMode('quick');
 });
 
 // 检查认证状态
@@ -146,6 +186,10 @@ function showModal(modalId) {
     if (modal) {
         modal.classList.add('show');
         document.body.style.overflow = 'hidden'; // 防止背景滚动
+
+        if (modalId === 'importTeamModal') {
+            setSingleImportMode('quick');
+        }
     }
 }
 
@@ -240,6 +284,9 @@ let oauthDraft = {
     clientId: ''
 };
 
+let oauthParsedCache = null;
+let oauthParsedCacheKey = '';
+
 async function generateOAuthAuthorizeLink() {
     const form = document.getElementById('singleImportForm');
     if (!form) return;
@@ -268,6 +315,8 @@ async function generateOAuthAuthorizeLink() {
         oauthDraft.codeVerifier = data.code_verifier || '';
         oauthDraft.state = data.state || '';
         oauthDraft.clientId = data.client_id || clientId;
+        oauthParsedCache = null;
+        oauthParsedCacheKey = '';
 
         document.getElementById('oauthAuthorizeUrlOutput').value = data.authorize_url || '';
         if (form.clientId) form.clientId.value = oauthDraft.clientId;
@@ -289,12 +338,16 @@ async function generateOAuthAuthorizeLink() {
     }
 }
 
-async function parseOAuthCallbackData() {
+async function parseOAuthCallbackData(forceRefresh = false) {
     const callbackText = document.getElementById('oauthCallbackInput').value.trim();
     const form = document.getElementById('singleImportForm');
 
     if (!callbackText) {
         throw new Error('请先粘贴回调 URL');
+    }
+
+    if (!forceRefresh && oauthParsedCache && oauthParsedCacheKey === callbackText) {
+        return oauthParsedCache;
     }
 
     const result = await apiCall('/admin/oauth/openai/parse-callback', {
@@ -312,7 +365,10 @@ async function parseOAuthCallbackData() {
         throw new Error(result.error || '解析回调失败');
     }
 
-    return unwrapApiPayload(result) || {};
+    const parsed = unwrapApiPayload(result) || {};
+    oauthParsedCache = parsed;
+    oauthParsedCacheKey = callbackText;
+    return parsed;
 }
 
 function decodeJwtPayload(token) {
@@ -348,20 +404,21 @@ function buildOAuthJsonTemplate(parsedData) {
     const accessAuth = accessPayload['https://api.openai.com/auth'] || {};
     const accessProfile = accessPayload['https://api.openai.com/profile'] || {};
 
-    const accountId = raw.account_id || accessAuth.chatgpt_account_id || '';
-    const email = raw.email || accessProfile.email || '';
+    const accountId = raw.account_id || parsedData.account_id || accessAuth.chatgpt_account_id || '';
+    const email = raw.email || parsedData.email || accessProfile.email || '';
     const exp = accessPayload.exp ? new Date(accessPayload.exp * 1000) : null;
+    const expired = raw.expired || parsedData.expired || (exp ? toIsoStringWithOffset8(exp) : '');
 
     return {
         access_token: accessToken,
         account_id: accountId,
-        disabled: false,
+        disabled: typeof raw.disabled === 'boolean' ? raw.disabled : false,
         email,
-        expired: exp ? toIsoStringWithOffset8(exp) : '',
-        id_token: raw.id_token || '',
-        last_refresh: toIsoStringWithOffset8(new Date()),
+        expired,
+        id_token: raw.id_token || parsedData.id_token || '',
+        last_refresh: raw.last_refresh || parsedData.last_refresh || toIsoStringWithOffset8(new Date()),
         refresh_token: refreshToken,
-        type: 'codex',
+        type: raw.type || parsedData.type || 'codex',
         client_id: clientId
     };
 }
@@ -381,7 +438,7 @@ function downloadJsonFile(payload, filename) {
 
 async function exportOAuthJsonTemplateFile() {
     try {
-        const data = await parseOAuthCallbackData();
+        const data = oauthParsedCache || await parseOAuthCallbackData();
         const payload = buildOAuthJsonTemplate(data);
         const filename = `team-oauth-${Date.now()}.json`;
         downloadJsonFile(payload, filename);
@@ -395,7 +452,7 @@ async function parseOAuthCallbackAndFill() {
     const form = document.getElementById('singleImportForm');
 
     try {
-        const data = await parseOAuthCallbackData();
+        const data = await parseOAuthCallbackData(true);
         if (form.accessToken && data.access_token) form.accessToken.value = data.access_token;
         if (form.refreshToken && data.refresh_token) form.refreshToken.value = data.refresh_token;
         if (form.clientId && data.client_id) form.clientId.value = data.client_id;
@@ -453,8 +510,13 @@ async function handleSingleImport(event) {
 async function handleBatchImport(event) {
     event.preventDefault();
     const form = event.target;
-    const batchContent = form.batchContent.value.trim();
+    const batchContent = (form.batchContent && form.batchContent.value ? form.batchContent.value.trim() : "");
     const submitButton = form.querySelector('button[type="submit"]');
+
+    if (!batchContent) {
+        showToast('请输入批量导入内容', 'error');
+        return;
+    }
 
     // UI 元素
     const progressContainer = document.getElementById('batchProgressContainer');
