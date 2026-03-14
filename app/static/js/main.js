@@ -1212,3 +1212,20 @@ async function generateWelfareCode() {
         if (btn) btn.disabled = false;
     }
 }
+
+
+async function generateWelfareCode() {
+    try {
+        const btn = document.getElementById('generateWelfareCodeBtn');
+        if (btn) { btn.disabled = true; }
+        const result = await apiCall('/admin/welfare/code/generate', { method: 'POST' });
+        if (!result.success) throw new Error(result.error || '生成失败');
+        showToast(`通用兑换码已更新：${result.code}`, 'success');
+        setTimeout(() => location.reload(), 1000);
+    } catch (error) {
+        showToast(error.message || '生成通用兑换码失败', 'error');
+    } finally {
+        const btn = document.getElementById('generateWelfareCodeBtn');
+        if (btn) btn.disabled = false;
+    }
+}
