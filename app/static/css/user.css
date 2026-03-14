@@ -581,3 +581,95 @@ body.redeem-page .btn-primary {
   background: linear-gradient(135deg, #4f8ef7, #7b5ea7) !important;
   color: #ffffff !important;
 }
+
+
+.announcement-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: none;
+}
+
+.announcement-modal.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.announcement-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 10, 26, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.announcement-dialog {
+  position: relative;
+  width: min(680px, calc(100vw - 28px));
+  margin: 0 auto;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(8, 17, 40, 0.95);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.announcement-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-base);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.announcement-header h3 {
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.announcement-close {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.announcement-body {
+  padding: 16px;
+  color: #d8e3f5;
+  line-height: 1.7;
+  max-height: 58vh;
+  overflow-y: auto;
+}
+
+.announcement-body h1,
+.announcement-body h2,
+.announcement-body h3 {
+  margin: 0.65em 0 0.4em;
+  color: #eff5ff;
+}
+
+.announcement-body p { margin: 0.55em 0; }
+
+.announcement-body ul {
+  margin: 0.5em 0 0.7em 1.2em;
+}
+
+.announcement-body a {
+  color: #8bb7ff;
+}
+
+.announcement-footer {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border-base);
+}
+
+@media (max-width: 760px) {
+  .announcement-dialog {
+    width: min(680px, calc(100vw - 16px));
+    max-height: calc(100vh - 24px);
+  }
+}

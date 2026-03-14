@@ -989,7 +989,103 @@ body.admin-theme .toast {
     margin-bottom: 0;
 }
 
+
+.oauth-quick-card {
+    border: 1px dashed var(--border-base);
+    border-radius: 10px;
+    padding: 0.9rem;
+    margin-bottom: 0.9rem;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.oauth-quick-head label {
+    display: block;
+    margin-bottom: 0.2rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.oauth-quick-subtitle {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+}
+
+.oauth-quick-action-row {
+    margin-top: 0.65rem;
+}
+
+.oauth-main-btn {
+    min-width: 160px;
+}
+
+.oauth-quick-fields {
+    margin-top: 0.7rem;
+    display: grid;
+    gap: 0.55rem;
+}
+
+.oauth-quick-btn-row {
+    margin-top: 0.7rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.oauth-quick-btn-row .btn {
+    min-width: 132px;
+}
+
+
+.json-import-box {
+    border: 1px dashed var(--border-base);
+    border-radius: 12px;
+    padding: 1.1rem;
+    margin-bottom: 1rem;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.02);
+    display: grid;
+    gap: 0.65rem;
+    justify-items: center;
+}
+
+.json-import-box-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.json-import-file-hint {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    word-break: break-word;
+}
+
+.import-mode-toggle-wrap {
+    margin: 0.75rem 0 1rem;
+    text-align: center;
+}
+
+.import-mode-toggle-btn {
+    border: 1px dashed var(--border-base);
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.85rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: var(--transition-fast);
+}
+
+.import-mode-toggle-btn:hover {
+    color: var(--text-main);
+    border-color: var(--primary);
+    background: var(--primary-soft);
+}
+
 .header-actions {
+
     display: flex;
     gap: 0.75rem;
     align-items: center;
