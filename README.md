@@ -6,8 +6,8 @@
 
 ### 一键部署
 ```bash
-git clone https://github.com/tibbar213/team-manage.git
-cd team-manage
+git clone https://github.com/loLollipop/team-manage-refresh.git
+cd team-manage-refresh
 cp .env.example .env
 docker compose up -d
 ```
@@ -15,6 +15,14 @@ docker compose up -d
 ### 一键更新
 ```bash
 git pull && docker compose down && docker compose up -d --build
+```
+
+### 覆盖旧项目（重写历史/强推后推荐）
+```bash
+git fetch origin
+git checkout main
+git reset --hard origin/main
+docker compose down && docker compose up -d --build
 ```
 
 ## ✨ 功能特性
