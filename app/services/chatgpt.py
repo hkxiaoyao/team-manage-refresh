@@ -202,7 +202,14 @@ class ChatGPTService:
             headers = {"Authorization": f"Bearer {access_token}"}
             result = await self._make_request("GET", url, headers, db_session=db_session, identifier=identifier)
             if not result["success"]:
-                return {"success": False, "members": [], "total": 0, "error": result["error"]}
+                return {
+                    "success": False,
+                    "members": [],
+                    "total": 0,
+                    "error": result["error"],
+                    "error_code": result.get("error_code"),
+                    "status_code": result.get("status_code"),
+                }
             data = result["data"]
             items = data.get("items", [])
             total = data.get("total", 0)
@@ -227,7 +234,14 @@ class ChatGPTService:
         }
         result = await self._make_request("GET", url, headers, db_session=db_session, identifier=identifier)
         if not result["success"]:
-            return {"success": False, "items": [], "total": 0, "error": result["error"]}
+            return {
+                "success": False,
+                "items": [],
+                "total": 0,
+                "error": result["error"],
+                "error_code": result.get("error_code"),
+                "status_code": result.get("status_code"),
+            }
         data = result["data"]
         items = data.get("items", [])
         return {"success": True, "items": items, "total": len(items), "error": None}
@@ -299,7 +313,13 @@ class ChatGPTService:
         headers = {"Authorization": f"Bearer {access_token}"}
         result = await self._make_request("GET", url, headers, db_session=db_session, identifier=identifier)
         if not result["success"]:
-            return {"success": False, "accounts": [], "error": result["error"]}
+            return {
+                "success": False,
+                "accounts": [],
+                "error": result["error"],
+                "error_code": result.get("error_code"),
+                "status_code": result.get("status_code"),
+            }
         
         data = result["data"]
         accounts_data = data.get("accounts", {})
