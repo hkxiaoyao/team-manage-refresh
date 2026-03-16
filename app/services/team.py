@@ -7,6 +7,7 @@ import json
 import asyncio
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
+import pytz
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,6 +18,7 @@ from app.services.encryption import encryption_service
 from app.utils.token_parser import TokenParser
 from app.utils.jwt_parser import JWTParser
 from app.utils.time_utils import get_now
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,22 @@ class TeamService:
         self.chatgpt_service = chatgpt_service
         self.token_parser = TokenParser()
         self.jwt_parser = JWTParser()
+
+    def _parse_remote_expires_at(self, expires_at_raw: Optional[str]) -> Optional[datetime]:
+        """将 OpenAI 返回的 expires_at 解析为本地时区语义的 naive datetime。"""
+        if not expires_at_raw:
+            return None
+
+        try:
+            normalized = str(expires_at_raw).strip().replace("Z", "+00:00")
+            dt = datetime.fromisoformat(normalized)
+            if dt.tzinfo is not None:
+                local_tz = pytz.timezone(settings.timezone)
+                return dt.astimezone(local_tz).replace(tzinfo=None)
+            return dt
+        except Exception as e:
+            logger.warning(f"解析过期时间失败: {e}")
+            return None
 
     async def _handle_api_error(self, result: Dict[str, Any], team: Team, db_session: AsyncSession) -> bool:
         """
@@ -160,7 +178,7 @@ class TeamService:
             if team.current_members >= team.max_members:
                 logger.info(f"Team {team.id} ({team.email}) 请求成功, 将状态从 error 恢复为 full")
                 team.status = "full"
-            elif team.expires_at and team.expires_at < datetime.now():
+            elif team.expires_at and team.expires_at < get_now():
                 logger.info(f"Team {team.id} ({team.email}) 请求成功, 将状态从 error 恢复为 expired")
                 team.status = "expired"
             else:
@@ -180,12 +198,16 @@ class TeamService:
         Returns:
             有效的 AT Token, 刷新失败返回 None
         """
+        current_valid_token: Optional[str] = None
+
         try:
             # 1. 解密当前 Token
             access_token = encryption_service.decrypt_token(team.access_token_encrypted)
+            if access_token and not self.jwt_parser.is_token_expired(access_token):
+                current_valid_token = access_token
             
             # 2. 检查是否过期 (如果不强制刷新且未过期，则返回)
-            if not force_refresh and not self.jwt_parser.is_token_expired(access_token):
+            if not force_refresh and current_valid_token:
                 return access_token
                 
             if force_refresh:
@@ -262,6 +284,14 @@ class TeamService:
                 # 检查是否为致命错误 (如 token_invalidated)
                 if await self._handle_api_error(refresh_result, team, db_session):
                     return None
+
+        # force_refresh 场景下，如果刷新链路失败但当前 AT 仍可用，则回退到当前 AT，
+        # 避免“误判过期”导致状态被错误写成 expired。
+        if force_refresh and current_valid_token:
+            logger.warning(
+                f"Team {team.id} 强制刷新失败，但现有 AT 仍有效，回退使用当前 Token"
+            )
+            return current_valid_token
 
         if team.status != "banned":
             logger.error(f"Team {team.id} Token 已过期且无法刷新，标记为 expired")
@@ -526,15 +556,7 @@ class TeamService:
                     current_members += invites_result["total"]
 
                 # 解析过期时间
-                expires_at = None
-                if selected_account["expires_at"]:
-                    try:
-                        # ISO 8601 格式: 2026-02-21T23:10:05+00:00
-                        expires_at = datetime.fromisoformat(
-                            selected_account["expires_at"].replace("+00:00", "")
-                        )
-                    except Exception as e:
-                        logger.warning(f"解析过期时间失败: {e}")
+                expires_at = self._parse_remote_expires_at(selected_account.get("expires_at"))
 
                 # 获取账户设置 (包含 beta_settings)
                 device_code_auth_enabled = False
@@ -567,7 +589,7 @@ class TeamService:
                 status = "active"
                 if current_members >= max_members:
                     status = "full"
-                elif expires_at and expires_at < datetime.now():
+                elif expires_at and expires_at < get_now():
                     status = "expired"
 
                 # 加密 AT Token
@@ -748,7 +770,7 @@ class TeamService:
             if team.status in ["active", "full", "expired"]:
                 if team.current_members >= team.max_members:
                     team.status = "full"
-                elif team.expires_at and team.expires_at < datetime.now():
+                elif team.expires_at and team.expires_at < get_now():
                     team.status = "expired"
                 else:
                     team.status = "active"
@@ -1231,14 +1253,7 @@ class TeamService:
                 }
 
             # 6. 解析过期时间
-            expires_at = None
-            if current_account["expires_at"]:
-                try:
-                    expires_at = datetime.fromisoformat(
-                        current_account["expires_at"].replace("+00:00", "")
-                    )
-                except Exception as e:
-                    logger.warning(f"解析过期时间失败: {e}")
+            expires_at = self._parse_remote_expires_at(current_account.get("expires_at"))
 
             # 7.5 获取账户设置 (包含 beta_settings)
             settings_result = await self.chatgpt_service.get_account_settings(
@@ -1256,7 +1271,7 @@ class TeamService:
             status = "active"
             if current_members >= team.max_members:
                 status = "full"
-            elif expires_at and expires_at < datetime.now():
+            elif expires_at and expires_at < get_now():
                 status = "expired"
             
             # 8. 更新 Team 信息

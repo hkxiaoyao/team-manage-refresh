@@ -4,8 +4,10 @@ JWT Token 解析工具
 """
 import jwt
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
+import pytz
+from app.config import settings
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -127,7 +129,11 @@ class JWTParser:
         try:
             exp_timestamp = payload.get("exp")
             if exp_timestamp:
-                return datetime.fromtimestamp(exp_timestamp)
+                # exp 是 UTC 时间戳；统一转为系统配置时区的 naive 时间，
+                # 与 get_now() 的返回值保持同一时区语义，避免误判“提前过期”。
+                dt_utc = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
+                target_tz = pytz.timezone(settings.timezone)
+                return dt_utc.astimezone(target_tz).replace(tzinfo=None)
             return None
         except Exception as e:
             logger.error(f"获取过期时间失败: {e}")
