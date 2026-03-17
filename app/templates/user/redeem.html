@@ -8,11 +8,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/user.css?v=20260314-announcement-fixes-1">
+    <link rel="stylesheet" href="/static/css/user.css?v=20260317-theme-css-hotfix-2">
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
-<body class="redeem-page">
+<body class="redeem-page theme-{{ ui_theme|default('ocean') }}" data-ui-theme="{{ ui_theme|default('ocean') }}">
     <div class="bg-scene" aria-hidden="true">
         <div class="orb orb-1"></div>
         <div class="orb orb-2"></div>
@@ -165,7 +165,7 @@
         };
     </script>
 
-    <script src="/static/js/redeem.js?v=20260314-announcement-fixes-1"></script>
+    <script src="/static/js/redeem.js?v=20260317-theme-css-hotfix-2"></script>
     <script>
         if (window.lucide) lucide.createIcons();
     </script>
