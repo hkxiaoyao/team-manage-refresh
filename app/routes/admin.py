@@ -218,30 +218,10 @@ async def welfare_dashboard(
         teams_result = await team_service.get_all_teams(db, page=page, per_page=per_page, search=search, status=status_filter, pool_type="welfare")
         team_stats = await team_service.get_stats(db, pool_type="welfare")
         remaining_spots = await team_service.get_total_available_seats(db, pool_type="welfare")
-        welfare_code = await settings_service.get_setting(db, "welfare_common_code", "")
-        welfare_limit_raw = await settings_service.get_setting(db, "welfare_common_code_limit", "0")
-        welfare_used_raw = await settings_service.get_setting(db, "welfare_common_code_used_count", "0")
-
-        # 福利通用码可用次数应与当前可用车位一致：sum(max_members - current_members)
-        usable_capacity_stmt = select(func.sum(Team.max_members - Team.current_members)).where(
-            Team.pool_type == "welfare",
-            Team.status == "active",
-            Team.current_members < Team.max_members
-        )
-        usable_capacity_result = await db.execute(usable_capacity_stmt)
-        usable_capacity = int(usable_capacity_result.scalar() or 0)
-
-        try:
-            welfare_limit = int(str(welfare_limit_raw or "0").strip() or 0)
-        except Exception:
-            welfare_limit = 0
-        try:
-            welfare_used = int(str(welfare_used_raw or "0").strip() or 0)
-        except Exception:
-            welfare_used = 0
-
-        # 兼容历史错误值：展示时按当前真实可用车位收敛
-        effective_limit = usable_capacity if usable_capacity >= 0 else 0
+        welfare_usage = await redemption_service.get_virtual_welfare_code_usage(db)
+        welfare_code = str(welfare_usage.get("welfare_code") or "")
+        welfare_used = int(welfare_usage.get("used_count") or 0)
+        effective_limit = max(int(welfare_usage.get("usable_capacity") or 0), 0)
 
         stats = {
             "total_teams": team_stats["total"],
@@ -298,7 +278,26 @@ async def generate_welfare_common_code(
                 content={"success": False, "error": "当前没有可用的福利车位，无法生成通用兑换码"}
             )
 
-        code = redemption_service._generate_random_code()
+        current_welfare_code = (await settings_service.get_setting(db, "welfare_common_code", "") or "").strip()
+        max_attempts = 10
+        code = None
+        for _ in range(max_attempts):
+            candidate = redemption_service._generate_random_code()
+            existing_result = await db.execute(
+                select(RedemptionCode).where(RedemptionCode.code == candidate)
+            )
+            if existing_result.scalar_one_or_none():
+                continue
+            if current_welfare_code and candidate == current_welfare_code:
+                continue
+            code = candidate
+            break
+
+        if not code:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"success": False, "error": "生成福利通用兑换码失败，请重试"}
+            )
 
         # 兼容清理：历史版本可能把福利通用码写入 redemption_codes，这里统一失效处理
         await db.execute(

@@ -65,6 +65,37 @@ class RedemptionService:
         redemption_code.used_at = None
         redemption_code.warranty_expires_at = None
 
+    async def get_virtual_welfare_code_usage(
+        self,
+        db_session: AsyncSession,
+        welfare_code: Optional[str] = None
+    ) -> Dict[str, int | str | None]:
+        """获取当前福利通用兑换码的实际使用情况。"""
+        if welfare_code is None:
+            welfare_code = (await settings_service.get_setting(db_session, "welfare_common_code", "") or "").strip()
+
+        used_count = 0
+        if welfare_code:
+            used_result = await db_session.execute(
+                select(func.count(RedemptionRecord.id)).where(RedemptionRecord.code == welfare_code)
+            )
+            used_count = int(used_result.scalar() or 0)
+
+        capacity_result = await db_session.execute(
+            select(func.sum(Team.max_members - Team.current_members)).where(
+                Team.pool_type == "welfare",
+                Team.status == "active",
+                Team.current_members < Team.max_members
+            )
+        )
+        usable_capacity = int(capacity_result.scalar() or 0)
+
+        return {
+            "welfare_code": welfare_code,
+            "used_count": used_count,
+            "usable_capacity": usable_capacity,
+        }
+
     async def _rebuild_code_usage_state(
         self,
         db_session: AsyncSession,
@@ -324,28 +355,9 @@ class RedemptionService:
                 from app.services.settings import settings_service
                 welfare_code = (await settings_service.get_setting(db_session, "welfare_common_code", "") or "").strip()
                 if welfare_code and code == welfare_code:
-                    limit_raw = await settings_service.get_setting(db_session, "welfare_common_code_limit", "0")
-                    used_raw = await settings_service.get_setting(db_session, "welfare_common_code_used_count", "0")
-                    try:
-                        limit_count = int(limit_raw or 0)
-                    except Exception:
-                        limit_count = 0
-                    try:
-                        used_count = int(used_raw or 0)
-                    except Exception:
-                        used_count = 0
-
-                    # 真实可兑换次数按当前可用车位计算：sum(max_members - current_members)
-                    capacity_stmt = select(func.sum(Team.max_members - Team.current_members)).where(
-                        Team.pool_type == "welfare",
-                        Team.status == "active",
-                        Team.current_members < Team.max_members
-                    )
-                    capacity_result = await db_session.execute(capacity_stmt)
-                    usable_capacity = int(capacity_result.scalar() or 0)
-
-                    # 兼容历史错误配置：向下收敛到当前真实可用车位
-                    effective_limit = min(limit_count, usable_capacity) if limit_count > 0 else usable_capacity
+                    welfare_usage = await self.get_virtual_welfare_code_usage(db_session, welfare_code=welfare_code)
+                    used_count = int(welfare_usage["used_count"] or 0)
+                    effective_limit = int(welfare_usage["usable_capacity"] or 0)
 
                     if effective_limit <= 0 or used_count >= effective_limit:
                         return {
