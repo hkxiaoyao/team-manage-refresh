@@ -179,20 +179,18 @@ body.admin-theme .page-header {
 
 body.modal-open .navbar,
 body.modal-open .sidebar,
-body.modal-open .main-container,
-body.modal-open .footer {
-    pointer-events: none;
-    user-select: none;
-}
-
-body.modal-open .navbar,
-body.modal-open .sidebar,
-body.modal-open .main-container,
 body.modal-open .footer,
 body.modal-open .sidebar-overlay {
-    filter: blur(3px);
-    opacity: 0.28;
-    transition: opacity var(--transition-base), filter var(--transition-base);
+    pointer-events: none;
+    user-select: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--transition-base), visibility var(--transition-base);
+}
+
+body.modal-open .main-container {
+    pointer-events: none;
+    user-select: none;
 }
 
 body.modal-open .modal-overlay.show {
