@@ -2,7 +2,7 @@
 质保相关路由
 处理用户质保查询请求
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,9 +78,15 @@ async def check_warranty(
         )
         
         if not result["success"]:
+            error_message = result.get("error", "查询失败")
+            status_code = 500
+            if "查询太频繁" in error_message:
+                status_code = 429
+            elif "必须提供" in error_message or "未找到" in error_message:
+                status_code = 400
             raise HTTPException(
-                status_code=500,
-                detail=result.get("error", "查询失败")
+                status_code=status_code,
+                detail=error_message
             )
         
         return WarrantyCheckResponse(

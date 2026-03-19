@@ -604,7 +604,7 @@ function showWarrantyResult(data) {
                                              <span>${escapeHtml(record.team_name || '未知 Team')}</span>
                                              <span>${teamStatusBadge}</span>
                                              ${(record.has_warranty && record.warranty_valid && record.team_status === 'banned') ? `
-                                             <button onclick="oneClickReplace('${escapeHtml(record.code)}', '${escapeHtml(record.email || currentEmail)}')" class="btn btn-xs btn-primary" style="padding: 2px 8px; font-size: 0.75rem; height: auto; min-height: 0;">
+                                             <button onclick="oneClickReplace('${escapeHtml(record.code)}', '${escapeHtml(record.email || currentEmail)}', this)" class="btn btn-xs btn-primary" style="padding: 2px 8px; font-size: 0.75rem; height: auto; min-height: 0;">
                                                  一键换车
                                              </button>
                                              ` : ''}
@@ -634,7 +634,7 @@ function showWarrantyResult(data) {
                                              </div>
                                          </div>
                                          ${(!record.device_code_auth_enabled && record.team_status !== 'banned' && record.team_status !== 'expired') ? `
-                                         <button onclick="enableUserDeviceAuth(${record.team_id}, '${escapeHtml(record.code)}', '${escapeHtml(record.email)}')" class="btn btn-xs btn-primary" style="padding: 4px 10px; font-size: 0.75rem; height: auto;">
+                                         <button onclick="enableUserDeviceAuth(${record.team_id}, '${escapeHtml(record.code)}', '${escapeHtml(record.email)}', this)" class="btn btn-xs btn-primary" style="padding: 4px 10px; font-size: 0.75rem; height: auto;">
                                              一键开启
                                          </button>
                                          ` : ''}
@@ -702,7 +702,7 @@ function copyWarrantyCode(code) {
 }
 
 // 一键换车
-async function oneClickReplace(code, email) {
+async function oneClickReplace(code, email, btn) {
     if (!code || !email) {
         showToast('无法获取完整信息，请手动重试', 'error');
         return;
@@ -718,12 +718,13 @@ async function oneClickReplace(code, email) {
     if (emailInput) emailInput.value = email;
     if (codeInput) codeInput.value = code;
 
-    const btn = event.currentTarget;
-    const originalContent = btn.innerHTML;
+    const originalContent = btn ? btn.innerHTML : "";
 
     // 禁用所有按钮防止重复提交
-    btn.disabled = true;
-    btn.innerHTML = '<i data-lucide="loader" class="spinning"></i> 处理中...';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader" class="spinning"></i> 处理中...';
+    }
     if (window.lucide) lucide.createIcons();
 
     showToast('正在为您尝试自动兑换...', 'info');
@@ -745,15 +746,16 @@ async function oneClickReplace(code, email) {
 }
 
 // 用户一键开启设备身份验证
-async function enableUserDeviceAuth(teamId, code, email) {
+async function enableUserDeviceAuth(teamId, code, email, btn) {
     if (!confirm('确定要在该 Team 中开启设备代码身份验证吗？')) {
         return;
     }
 
-    const btn = event.currentTarget;
-    const originalContent = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i data-lucide="loader" class="spinning"></i> 开启中...';
+    const originalContent = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader" class="spinning"></i> 开启中...';
+    }
     if (window.lucide) lucide.createIcons();
 
     try {
