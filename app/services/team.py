@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 TEAM_EMAIL_STATUS_INVITED = "invited"
 TEAM_EMAIL_STATUS_JOINED = "joined"
 TEAM_EMAIL_STATUS_REMOVED = "removed"
+TEAM_EMAIL_SYNC_MISS_THRESHOLD = 3
 ACTIVE_TEAM_EMAIL_STATUSES = (
     TEAM_EMAIL_STATUS_INVITED,
     TEAM_EMAIL_STATUS_JOINED,
@@ -263,6 +264,7 @@ class TeamService:
                 status=status,
                 source=source,
                 last_seen_at=current_time,
+                missing_sync_count=0,
             )
             db_session.add(mapping)
             return mapping
@@ -270,6 +272,7 @@ class TeamService:
         mapping.status = status
         mapping.source = source
         mapping.last_seen_at = current_time
+        mapping.missing_sync_count = 0
         return mapping
 
     async def mark_team_email_mapping_removed(
@@ -322,6 +325,7 @@ class TeamService:
                 mapping.status = TEAM_EMAIL_STATUS_JOINED
                 mapping.source = "sync"
                 mapping.last_seen_at = seen_at
+                mapping.missing_sync_count = 0
             else:
                 db_session.add(
                     TeamEmailMapping(
@@ -330,6 +334,7 @@ class TeamService:
                         status=TEAM_EMAIL_STATUS_JOINED,
                         source="sync",
                         last_seen_at=seen_at,
+                        missing_sync_count=0,
                     )
                 )
 
@@ -339,6 +344,7 @@ class TeamService:
                 mapping.status = TEAM_EMAIL_STATUS_INVITED
                 mapping.source = "sync"
                 mapping.last_seen_at = seen_at
+                mapping.missing_sync_count = 0
             else:
                 db_session.add(
                     TeamEmailMapping(
@@ -347,15 +353,18 @@ class TeamService:
                         status=TEAM_EMAIL_STATUS_INVITED,
                         source="sync",
                         last_seen_at=seen_at,
+                        missing_sync_count=0,
                     )
                 )
 
         active_emails = normalized_joined | normalized_invited
         for email, mapping in existing_mappings.items():
             if email not in active_emails and mapping.status in ACTIVE_TEAM_EMAIL_STATUSES:
-                mapping.status = TEAM_EMAIL_STATUS_REMOVED
-                mapping.source = "sync"
-                mapping.last_seen_at = seen_at
+                mapping.missing_sync_count = (mapping.missing_sync_count or 0) + 1
+                if mapping.missing_sync_count >= TEAM_EMAIL_SYNC_MISS_THRESHOLD:
+                    mapping.status = TEAM_EMAIL_STATUS_REMOVED
+                    mapping.source = "sync"
+                    mapping.last_seen_at = seen_at
 
     async def ensure_access_token(self, team: Team, db_session: AsyncSession, force_refresh: bool = False) -> Optional[str]:
         """

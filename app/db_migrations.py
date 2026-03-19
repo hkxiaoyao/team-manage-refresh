@@ -142,12 +142,21 @@ def run_auto_migration():
                     status VARCHAR(20) NOT NULL DEFAULT 'invited',
                     source VARCHAR(20) NOT NULL DEFAULT 'sync',
                     last_seen_at DATETIME,
+                    missing_sync_count INTEGER NOT NULL DEFAULT 0,
                     created_at DATETIME,
                     updated_at DATETIME,
                     FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE CASCADE
                 )
             """)
             migrations_applied.append("team_email_mappings")
+
+        if table_exists(cursor, "team_email_mappings") and not column_exists(cursor, "team_email_mappings", "missing_sync_count"):
+            logger.info("添加 team_email_mappings.missing_sync_count 字段")
+            cursor.execute("""
+                ALTER TABLE team_email_mappings
+                ADD COLUMN missing_sync_count INTEGER NOT NULL DEFAULT 0
+            """)
+            migrations_applied.append("team_email_mappings.missing_sync_count")
 
         cursor.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_team_email_unique

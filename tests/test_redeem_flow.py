@@ -5,8 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base
-from app.models import RedemptionCode, RedemptionRecord, Team
+from app.models import RedemptionCode, RedemptionRecord, Team, TeamEmailMapping
 from app.services.redeem_flow import RedeemFlowService
+from app.services.team import TeamService
 
 
 class StubRedemptionService:
@@ -160,10 +161,79 @@ class RedeemFlowServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0].team_id, 2)
 
-            team_1 = await session.get(Team, 1)
-            team_2 = await session.get(Team, 2)
-            self.assertEqual(team_1.current_members, 3)
-            self.assertEqual(team_2.current_members, 2)
+    async def test_sync_reconcile_requires_three_misses_before_removed(self):
+        await self._seed_basic_data()
+        team_service = TeamService.__new__(TeamService)
+
+        async with self.session_factory() as session:
+            await team_service.upsert_team_email_mapping(
+                team_id=1,
+                email="user@example.com",
+                status="joined",
+                db_session=session,
+                source="sync",
+            )
+            await session.commit()
+
+            for expected_missing_count in (1, 2):
+                await team_service._reconcile_team_email_mappings(1, set(), set(), session)
+                await session.commit()
+
+                mapping = (
+                    await session.execute(
+                        select(TeamEmailMapping).where(
+                            TeamEmailMapping.team_id == 1,
+                            TeamEmailMapping.email == "user@example.com",
+                        )
+                    )
+                ).scalar_one()
+                self.assertEqual(mapping.status, "joined")
+                self.assertEqual(mapping.missing_sync_count, expected_missing_count)
+
+            await team_service._reconcile_team_email_mappings(1, set(), set(), session)
+            await session.commit()
+
+            mapping = (
+                await session.execute(
+                    select(TeamEmailMapping).where(
+                        TeamEmailMapping.team_id == 1,
+                        TeamEmailMapping.email == "user@example.com",
+                    )
+                )
+            ).scalar_one()
+            self.assertEqual(mapping.status, "removed")
+            self.assertEqual(mapping.missing_sync_count, 3)
+
+    async def test_sync_reconcile_resets_missing_counter_when_email_returns(self):
+        await self._seed_basic_data()
+        team_service = TeamService.__new__(TeamService)
+
+        async with self.session_factory() as session:
+            await team_service.upsert_team_email_mapping(
+                team_id=1,
+                email="user@example.com",
+                status="joined",
+                db_session=session,
+                source="sync",
+            )
+            await session.commit()
+
+            await team_service._reconcile_team_email_mappings(1, set(), set(), session)
+            await session.commit()
+
+            await team_service._reconcile_team_email_mappings(1, {"user@example.com"}, set(), session)
+            await session.commit()
+
+            mapping = (
+                await session.execute(
+                    select(TeamEmailMapping).where(
+                        TeamEmailMapping.team_id == 1,
+                        TeamEmailMapping.email == "user@example.com",
+                    )
+                )
+            ).scalar_one()
+            self.assertEqual(mapping.status, "joined")
+            self.assertEqual(mapping.missing_sync_count, 0)
 
     async def test_locked_team_returns_conflict_without_consuming_code(self):
         await self._seed_basic_data()

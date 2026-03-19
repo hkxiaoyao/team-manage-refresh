@@ -76,6 +76,7 @@ class TeamEmailMapping(Base):
     status = Column(String(20), default="invited", nullable=False, comment="状态: invited/joined/removed")
     source = Column(String(20), default="sync", nullable=False, comment="来源: redeem/admin_add/sync/api")
     last_seen_at = Column(DateTime, default=get_now, comment="最后一次确认该状态的时间")
+    missing_sync_count = Column(Integer, default=0, nullable=False, comment="连续同步缺失次数")
     created_at = Column(DateTime, default=get_now, comment="创建时间")
     updated_at = Column(DateTime, default=get_now, onupdate=get_now, comment="更新时间")
 
