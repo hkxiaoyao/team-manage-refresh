@@ -266,7 +266,8 @@ body.admin-theme .toast {
 
 .main-container {
     display: flex;
-    align-items: stretch;
+    align-items: flex-start;
+    flex-wrap: nowrap;
     max-width: 1440px;
     margin: 0 auto;
 }
@@ -274,6 +275,7 @@ body.admin-theme .toast {
 .sidebar {
     width: 260px;
     flex-shrink: 0;
+    align-self: flex-start;
     padding: 2rem 1.5rem;
     border-right: 1px solid var(--border-base);
     min-height: calc(100vh - 64px);
@@ -319,7 +321,8 @@ body.admin-theme .toast {
 }
 
 .main-content {
-    flex: 1;
+    flex: 1 1 auto;
+    width: calc(100% - 260px);
     min-width: 0;
     /* Allow content to shrink and trigger scrolling */
     padding: 2rem 3rem;
@@ -1108,6 +1111,24 @@ body.admin-theme .toast {
     word-break: break-word;
 }
 
+
+.batch-token-input-box {
+    margin-bottom: 1rem;
+}
+
+.batch-token-input-title {
+    display: inline-block;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.batch-token-textarea {
+    min-height: 180px;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .import-mode-toggle-wrap {
     margin: 0.75rem 0 1rem;
     text-align: center;
@@ -1383,8 +1404,17 @@ body.admin-theme .toast {
 }
 
 @media (max-width: 768px) {
+    :root {
+        --mobile-sidebar-width: min(280px, calc(100vw - 56px));
+    }
+
     .navbar-container {
         padding: 0 1rem;
+    }
+
+    body.admin-theme .main-container {
+        position: static;
+        z-index: auto;
     }
 
     .navbar-left {
@@ -1422,8 +1452,20 @@ body.admin-theme .toast {
         transform: translateX(-100%);
         transition: transform var(--transition-base);
         box-shadow: var(--shadow-lg);
-        width: 280px;
+        width: var(--mobile-sidebar-width);
         height: 100vh;
+        background-color: var(--bg-surface);
+    }
+
+    body.admin-theme .sidebar {
+        background-color: #0b1733;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    body.admin-theme.theme-warm .sidebar,
+    html.theme-warm body.admin-theme .sidebar {
+        background-color: #fffaf4;
     }
 
     .sidebar.open {
@@ -1431,22 +1473,7 @@ body.admin-theme .toast {
     }
 
     .sidebar-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(4px);
-        z-index: 1000;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity var(--transition-base);
-    }
-
-    .sidebar-overlay.show {
-        opacity: 1;
-        pointer-events: auto;
+        display: none;
     }
 
     .main-content {

@@ -304,11 +304,32 @@ function showModal(modalId) {
     }
 }
 
+function resetBatchImportForm() {
+    const form = document.getElementById('batchImportForm');
+    if (!form) return;
+
+    form.reset();
+
+    const fileInput = document.getElementById('jsonImportFile');
+    if (fileInput) {
+        fileInput.value = '';
+    }
+
+    const fileNameNode = document.getElementById('jsonImportFileName');
+    if (fileNameNode) {
+        fileNameNode.textContent = '支持单对象、对象数组，或 {"teams": [...]} 格式';
+    }
+}
+
 function hideModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.remove('show');
         document.body.style.overflow = '';
+
+        if (modalId === 'importTeamModal') {
+            resetBatchImportForm();
+        }
     }
 }
 
@@ -654,6 +675,7 @@ async function handleBatchImport(event) {
 
     submitButton.disabled = true;
     submitButton.textContent = '导入中...';
+    let shouldResetBatchForm = false;
 
     try {
         const response = await fetch('/admin/teams/import', {
@@ -724,6 +746,7 @@ async function handleBatchImport(event) {
                     finalSummaryEl.textContent = `总数: ${data.total} | 成功: ${data.success_count} | 失败: ${data.failed_count}`;
 
                     if (data.failed_count === 0) {
+                        shouldResetBatchForm = true;
                         showToast('全部导入成功！', 'success');
                     } else {
                         showToast(`导入完成，成功 ${data.success_count} 条，失败 ${data.failed_count} 条`, 'warning');
@@ -761,6 +784,9 @@ async function handleBatchImport(event) {
     } catch (error) {
         showToast(error.message || '网络错误', 'error');
     } finally {
+        if (shouldResetBatchForm) {
+            resetBatchImportForm();
+        }
         submitButton.disabled = false;
         submitButton.textContent = '批量导入';
     }
