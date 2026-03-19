@@ -1469,7 +1469,7 @@ body.admin-theme .toast {
         left: 0;
         top: 64px;
         bottom: 0;
-        z-index: 1001;
+        z-index: 1100;
         transform: translateX(-100%);
         transition: transform var(--transition-base);
         box-shadow: var(--shadow-lg);
@@ -1501,12 +1501,12 @@ body.admin-theme .toast {
     .sidebar-overlay {
         position: fixed;
         top: 64px;
-        left: 0;
+        left: var(--mobile-sidebar-width);
         right: 0;
         bottom: 0;
         background-color: rgba(15, 23, 42, 0.4);
         backdrop-filter: blur(4px);
-        z-index: 1000;
+        z-index: 1090;
         opacity: 0;
         pointer-events: none;
         transition: opacity var(--transition-base);
