@@ -164,6 +164,7 @@ body.admin-theme .footer {
     backdrop-filter: blur(14px);
 }
 
+body.admin-theme .app-layout,
 body.admin-theme .main-container,
 body.admin-theme .main-content,
 body.admin-theme .content-section,
@@ -264,11 +265,16 @@ body.admin-theme .toast {
     letter-spacing: -0.025em;
 }
 
-.main-container {
+.app-layout {
     display: flex;
     align-items: stretch;
     max-width: 1440px;
     margin: 0 auto;
+}
+
+.main-container {
+    flex: 1;
+    min-width: 0;
 }
 
 .sidebar {
@@ -1108,6 +1114,24 @@ body.admin-theme .toast {
     word-break: break-word;
 }
 
+
+.batch-token-input-box {
+    margin-bottom: 1rem;
+}
+
+.batch-token-input-title {
+    display: inline-block;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.batch-token-textarea {
+    min-height: 180px;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .import-mode-toggle-wrap {
     margin: 0.75rem 0 1rem;
     text-align: center;
@@ -1383,8 +1407,18 @@ body.admin-theme .toast {
 }
 
 @media (max-width: 768px) {
+    :root {
+        --mobile-sidebar-width: min(280px, calc(100vw - 56px));
+    }
+
     .navbar-container {
         padding: 0 1rem;
+    }
+
+    body.admin-theme .app-layout,
+    body.admin-theme .main-container {
+        position: static;
+        z-index: auto;
     }
 
     .navbar-left {
@@ -1422,8 +1456,20 @@ body.admin-theme .toast {
         transform: translateX(-100%);
         transition: transform var(--transition-base);
         box-shadow: var(--shadow-lg);
-        width: 280px;
+        width: var(--mobile-sidebar-width);
         height: 100vh;
+        background-color: var(--bg-surface);
+    }
+
+    body.admin-theme .sidebar {
+        background-color: #0b1733;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    body.admin-theme.theme-warm .sidebar,
+    html.theme-warm body.admin-theme .sidebar {
+        background-color: #fffaf4;
     }
 
     .sidebar.open {
@@ -1433,11 +1479,10 @@ body.admin-theme .toast {
     .sidebar-overlay {
         position: fixed;
         top: 0;
-        left: 0;
+        left: var(--mobile-sidebar-width);
         right: 0;
         bottom: 0;
-        background-color: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(4px);
+        background-color: rgba(0, 0, 0, 0.28);
         z-index: 1000;
         opacity: 0;
         pointer-events: none;

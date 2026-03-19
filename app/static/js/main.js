@@ -304,11 +304,32 @@ function showModal(modalId) {
     }
 }
 
+function resetBatchImportForm() {
+    const form = document.getElementById('batchImportForm');
+    if (!form) return;
+
+    form.reset();
+
+    const fileInput = document.getElementById('jsonImportFile');
+    if (fileInput) {
+        fileInput.value = '';
+    }
+
+    const fileNameNode = document.getElementById('jsonImportFileName');
+    if (fileNameNode) {
+        fileNameNode.textContent = '支持单对象、对象数组，或 {"teams": [...]} 格式';
+    }
+}
+
 function hideModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.remove('show');
         document.body.style.overflow = '';
+
+        if (modalId === 'importTeamModal') {
+            resetBatchImportForm();
+        }
     }
 }
 
@@ -761,6 +782,7 @@ async function handleBatchImport(event) {
     } catch (error) {
         showToast(error.message || '网络错误', 'error');
     } finally {
+        resetBatchImportForm();
         submitButton.disabled = false;
         submitButton.textContent = '批量导入';
     }
