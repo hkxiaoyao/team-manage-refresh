@@ -38,6 +38,7 @@ class Team(Base):
     # 关系
     team_accounts = relationship("TeamAccount", back_populates="team", cascade="all, delete-orphan")
     redemption_records = relationship("RedemptionRecord", back_populates="team", cascade="all, delete-orphan")
+    email_mappings = relationship("TeamEmailMapping", back_populates="team", cascade="all, delete-orphan")
 
     # 索引
     __table_args__ = (
@@ -62,6 +63,31 @@ class TeamAccount(Base):
     # 唯一约束
     __table_args__ = (
         Index("idx_team_account", "team_id", "account_id", unique=True),
+    )
+
+
+class TeamEmailMapping(Base):
+    """Team 与邮箱关系映射表"""
+    __tablename__ = "team_email_mappings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False)
+    email = Column(String(255), nullable=False, comment="成员邮箱(统一存小写)")
+    status = Column(String(20), default="invited", nullable=False, comment="状态: invited/joined/removed")
+    source = Column(String(20), default="sync", nullable=False, comment="来源: redeem/admin_add/sync/api")
+    last_seen_at = Column(DateTime, default=get_now, comment="最后一次确认该状态的时间")
+    missing_sync_count = Column(Integer, default=0, nullable=False, comment="连续同步缺失次数")
+    created_at = Column(DateTime, default=get_now, comment="创建时间")
+    updated_at = Column(DateTime, default=get_now, onupdate=get_now, comment="更新时间")
+
+    # 关系
+    team = relationship("Team", back_populates="email_mappings")
+
+    # 索引
+    __table_args__ = (
+        Index("idx_team_email_unique", "team_id", "email", unique=True),
+        Index("idx_team_email_email", "email"),
+        Index("idx_team_email_status", "team_id", "status"),
     )
 
 

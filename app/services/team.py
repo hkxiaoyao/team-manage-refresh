@@ -8,11 +8,11 @@ import asyncio
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 import pytz
-from sqlalchemy import select, update, delete, func
+from sqlalchemy import select, update, delete, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Team, TeamAccount, RedemptionCode
+from app.models import Team, TeamAccount, RedemptionCode, TeamEmailMapping
 from app.services.chatgpt import ChatGPTService
 from app.services.encryption import encryption_service
 from app.utils.token_parser import TokenParser
@@ -21,6 +21,15 @@ from app.utils.time_utils import get_now
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+TEAM_EMAIL_STATUS_INVITED = "invited"
+TEAM_EMAIL_STATUS_JOINED = "joined"
+TEAM_EMAIL_STATUS_REMOVED = "removed"
+TEAM_EMAIL_SYNC_MISS_THRESHOLD = 3
+ACTIVE_TEAM_EMAIL_STATUSES = (
+    TEAM_EMAIL_STATUS_INVITED,
+    TEAM_EMAIL_STATUS_JOINED,
+)
 
 
 class TeamService:
@@ -197,6 +206,177 @@ class TeamService:
                 logger.info(f"Team {team.id} ({team.email}) 请求成功, 将状态从 error 恢复为 active")
                 team.status = "active"
         await db_session.commit()
+
+    @staticmethod
+    def _normalize_member_email(email: Optional[str]) -> Optional[str]:
+        """统一邮箱格式，避免大小写和空白差异导致重复记录。"""
+        if not email:
+            return None
+        normalized = str(email).strip().lower()
+        return normalized or None
+
+    async def get_active_team_ids_for_email(
+        self,
+        email: str,
+        db_session: AsyncSession,
+        pool_type: Optional[str] = None
+    ) -> List[int]:
+        """
+        获取某邮箱当前仍占用中的 Team 列表。
+        基于本地映射表判定，不访问远端接口。
+        """
+        normalized_email = self._normalize_member_email(email)
+        if not normalized_email:
+            return []
+
+        stmt = (
+            select(TeamEmailMapping.team_id)
+            .join(Team, TeamEmailMapping.team_id == Team.id)
+            .where(
+                TeamEmailMapping.email == normalized_email,
+                TeamEmailMapping.status.in_(ACTIVE_TEAM_EMAIL_STATUSES),
+                Team.status.in_(["active", "full"]),
+                or_(Team.expires_at.is_(None), Team.expires_at >= get_now()),
+            )
+            .order_by(TeamEmailMapping.team_id.asc())
+        )
+        if pool_type:
+            stmt = stmt.where(Team.pool_type == pool_type)
+
+        result = await db_session.execute(stmt)
+        team_ids = result.scalars().all()
+        return list(dict.fromkeys(team_ids))
+
+    async def upsert_team_email_mapping(
+        self,
+        team_id: int,
+        email: str,
+        status: str,
+        db_session: AsyncSession,
+        source: str = "sync",
+        seen_at: Optional[datetime] = None
+    ) -> Optional[TeamEmailMapping]:
+        """创建或更新 Team-邮箱映射。"""
+        normalized_email = self._normalize_member_email(email)
+        if not normalized_email:
+            return None
+
+        current_time = seen_at or get_now()
+        stmt = select(TeamEmailMapping).where(
+            TeamEmailMapping.team_id == team_id,
+            TeamEmailMapping.email == normalized_email
+        )
+        result = await db_session.execute(stmt)
+        mapping = result.scalar_one_or_none()
+
+        if not mapping:
+            mapping = TeamEmailMapping(
+                team_id=team_id,
+                email=normalized_email,
+                status=status,
+                source=source,
+                last_seen_at=current_time,
+                missing_sync_count=0,
+            )
+            db_session.add(mapping)
+            return mapping
+
+        mapping.status = status
+        mapping.source = source
+        mapping.last_seen_at = current_time
+        mapping.missing_sync_count = 0
+        return mapping
+
+    async def mark_team_email_mapping_removed(
+        self,
+        team_id: int,
+        email: str,
+        db_session: AsyncSession,
+        source: str = "sync",
+        seen_at: Optional[datetime] = None
+    ) -> Optional[TeamEmailMapping]:
+        """将 Team-邮箱映射标记为已移除。"""
+        return await self.upsert_team_email_mapping(
+            team_id=team_id,
+            email=email,
+            status=TEAM_EMAIL_STATUS_REMOVED,
+            db_session=db_session,
+            source=source,
+            seen_at=seen_at,
+        )
+
+    async def _reconcile_team_email_mappings(
+        self,
+        team_id: int,
+        joined_emails: set[str],
+        invited_emails: set[str],
+        db_session: AsyncSession
+    ) -> None:
+        """
+        根据一次完整同步结果，重建某个 Team 的邮箱状态映射。
+        """
+        seen_at = get_now()
+        normalized_joined = {
+            email for email in (self._normalize_member_email(item) for item in joined_emails) if email
+        }
+        normalized_invited = {
+            email for email in (self._normalize_member_email(item) for item in invited_emails) if email
+        } - normalized_joined
+
+        stmt = select(TeamEmailMapping).where(TeamEmailMapping.team_id == team_id)
+        result = await db_session.execute(stmt)
+        existing_mappings = {
+            mapping.email: mapping
+            for mapping in result.scalars().all()
+            if mapping.email
+        }
+
+        for email in normalized_joined:
+            mapping = existing_mappings.get(email)
+            if mapping:
+                mapping.status = TEAM_EMAIL_STATUS_JOINED
+                mapping.source = "sync"
+                mapping.last_seen_at = seen_at
+                mapping.missing_sync_count = 0
+            else:
+                db_session.add(
+                    TeamEmailMapping(
+                        team_id=team_id,
+                        email=email,
+                        status=TEAM_EMAIL_STATUS_JOINED,
+                        source="sync",
+                        last_seen_at=seen_at,
+                        missing_sync_count=0,
+                    )
+                )
+
+        for email in normalized_invited:
+            mapping = existing_mappings.get(email)
+            if mapping:
+                mapping.status = TEAM_EMAIL_STATUS_INVITED
+                mapping.source = "sync"
+                mapping.last_seen_at = seen_at
+                mapping.missing_sync_count = 0
+            else:
+                db_session.add(
+                    TeamEmailMapping(
+                        team_id=team_id,
+                        email=email,
+                        status=TEAM_EMAIL_STATUS_INVITED,
+                        source="sync",
+                        last_seen_at=seen_at,
+                        missing_sync_count=0,
+                    )
+                )
+
+        active_emails = normalized_joined | normalized_invited
+        for email, mapping in existing_mappings.items():
+            if email not in active_emails and mapping.status in ACTIVE_TEAM_EMAIL_STATUSES:
+                mapping.missing_sync_count = (mapping.missing_sync_count or 0) + 1
+                if mapping.missing_sync_count >= TEAM_EMAIL_SYNC_MISS_THRESHOLD:
+                    mapping.status = TEAM_EMAIL_STATUS_REMOVED
+                    mapping.source = "sync"
+                    mapping.last_seen_at = seen_at
 
     async def ensure_access_token(self, team: Team, db_session: AsyncSession, force_refresh: bool = False) -> Optional[str]:
         """
@@ -1220,19 +1400,27 @@ class TeamService:
                 identifier=team.email
             )
 
+            joined_member_emails = set()
+            invited_member_emails = set()
             all_member_emails = set()
             current_members = 0
             if members_result["success"]:
                 current_members += members_result["total"]
                 for m in members_result.get("members", []):
                     if m.get("email"):
-                        all_member_emails.add(m["email"].lower())
+                        normalized_email = self._normalize_member_email(m["email"])
+                        if normalized_email:
+                            joined_member_emails.add(normalized_email)
+                            all_member_emails.add(normalized_email)
             
             if invites_result["success"]:
                 current_members += invites_result["total"]
                 for inv in invites_result.get("items", []):
                     if inv.get("email_address"):
-                        all_member_emails.add(inv["email_address"].lower())
+                        normalized_email = self._normalize_member_email(inv["email_address"])
+                        if normalized_email:
+                            invited_member_emails.add(normalized_email)
+                            all_member_emails.add(normalized_email)
             else:
                 # 检查是否封号或 Token 失效
                 if await self._handle_api_error(invites_result, team, db_session):
@@ -1294,6 +1482,12 @@ class TeamService:
             team.device_code_auth_enabled = device_code_auth_enabled
             team.error_count = 0  # 同步成功，重置错误次数
             team.last_sync = get_now()
+            await self._reconcile_team_email_mappings(
+                team.id,
+                joined_member_emails,
+                invited_member_emails,
+                db_session
+            )
 
             await db_session.commit()
 
@@ -1697,6 +1891,8 @@ class TeamService:
                     "error": f"撤回邀请失败: {revoke_result['error']}"
                 }
 
+            await self.mark_team_email_mapping_removed(team_id, email, db_session, source="api")
+
             # 4. 更新成员数 (不再手动 -1，同步最新数据)
             await self.sync_team_info(team_id, db_session)
 
@@ -1886,7 +2082,8 @@ class TeamService:
         self,
         team_id: int,
         user_id: str,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        email: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         删除 Team 成员
@@ -1948,6 +2145,9 @@ class TeamService:
                     "message": None,
                     "error": f"删除成员失败: {delete_result['error']}"
                 }
+
+            if email:
+                await self.mark_team_email_mapping_removed(team_id, email, db_session, source="api")
 
             # 4. 更新成员数 (不再手动 -1，同步最新数据)
             await self.sync_team_info(team_id, db_session)
@@ -2313,7 +2513,7 @@ class TeamService:
             # 3. 根据状态执行删除
             if target["status"] == "joined":
                 # 已加入，调用删除成员
-                return await self.delete_team_member(team_id, target["user_id"], db_session)
+                return await self.delete_team_member(team_id, target["user_id"], db_session, email=email)
             else:
                 # 待加入，调用撤回邀请
                 return await self.revoke_team_invite(team_id, email, db_session)
