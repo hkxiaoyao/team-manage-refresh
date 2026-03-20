@@ -220,7 +220,18 @@
                             <button type="button" id="chooseJsonFileBtn" class="btn btn-primary">选择 JSON 文件</button>
                             <div class="json-import-file-hint" id="jsonImportFileName">支持单对象、对象数组，或 {"teams": [...]} 格式</div>
                         </div>
-                        <textarea name="batchContent" style="display:none"></textarea>
+                        <div class="batch-token-input-box">
+                            <label for="batchAccessTokens" class="batch-token-input-title">或直接粘贴 Access Token</label>
+                            <textarea id="batchAccessTokens" name="batchContent" class="form-control batch-token-textarea" rows="8" placeholder="每行粘贴一个 Access Token (AT)，系统会自动解析账号信息
+
+eyJ...
+eyJ...
+eyJ..."></textarea>
+                            <small class="form-text">一行一个 AT，粘贴后点击下方“批量导入”即可自动解析邮箱与账号信息。</small>
+                        </div>
+                        <div class="form-actions" style="margin-bottom: 1rem;">
+                            <button type="submit" class="btn btn-primary">批量导入</button>
+                        </div>
                         <div id="batchProgressContainer" style="display: none; margin-bottom: 1.5rem;">
                             <div class="progress-info"
                                 style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.875rem;">

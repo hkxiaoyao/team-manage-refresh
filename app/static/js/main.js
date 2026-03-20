@@ -7,6 +7,16 @@ function getCurrentPoolType() {
  * GPT Team 管理系统 - 通用 JavaScript
  */
 
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function cleanupLegacyThemeSettingsSection() {
     const legacyLinks = document.querySelectorAll('[data-target="settings-ui-theme"], a[href="#settings-ui-theme"]');
     legacyLinks.forEach((node) => node.remove());
@@ -119,7 +129,7 @@ function showToast(message, type = 'info') {
     if (type === 'success') icon = 'check-circle';
     if (type === 'error') icon = 'alert-circle';
 
-    toast.innerHTML = `<i data-lucide="${icon}"></i><span>${message}</span>`;
+    toast.innerHTML = `<i data-lucide="${icon}"></i><span>${escapeHtml(message)}</span>`;
     toast.className = `toast ${type} show`;
 
     if (window.lucide) {
@@ -129,6 +139,15 @@ function showToast(message, type = 'info') {
     setTimeout(() => {
         toast.classList.remove('show');
     }, 3000);
+}
+
+function mountGlobalOverlayNodes() {
+    const nodes = document.querySelectorAll('.modal-overlay, #toast');
+    nodes.forEach((node) => {
+        if (node && node.parentElement !== document.body) {
+            document.body.appendChild(node);
+        }
+    });
 }
 
 // 日期格式化函数
@@ -210,6 +229,27 @@ function setSingleImportMode(mode = 'quick') {
     manualSection.style.display = isManual ? 'block' : 'none';
 }
 
+function syncResponsiveSidebarMount() {
+    const sidebar = document.getElementById('adminSidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const mainContainer = document.querySelector('.main-container');
+    const mainContent = document.querySelector('.main-content');
+    if (!sidebar || !overlay || !mainContainer || !mainContent) return;
+
+    const isMobileLayout = window.matchMedia('(max-width: 768px)').matches;
+
+    if (isMobileLayout) {
+        if (sidebar.parentElement !== document.body) {
+            overlay.insertAdjacentElement('afterend', sidebar);
+        }
+        return;
+    }
+
+    if (sidebar.parentElement !== mainContainer) {
+        mainContainer.insertBefore(sidebar, mainContent);
+    }
+}
+
 // 页面加载完成后执行
 document.addEventListener('DOMContentLoaded', function () {
     // 检查认证状态
@@ -217,6 +257,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     cleanupLegacyThemeSettingsSection();
     initThemeSwitcher();
+    mountGlobalOverlayNodes();
+    syncResponsiveSidebarMount();
+    window.addEventListener('resize', syncResponsiveSidebarMount);
 
     // OAuth 一键导入按钮绑定（避免仅依赖内联 onclick）
     const btnOneClickToken = document.getElementById('btnOneClickToken');
@@ -297,6 +340,12 @@ function showModal(modalId) {
     if (modal) {
         modal.classList.add('show');
         document.body.style.overflow = 'hidden'; // 防止背景滚动
+        document.body.classList.add('modal-open');
+
+        const sidebar = document.getElementById('adminSidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        if (sidebar) sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('show');
 
         if (modalId === 'importTeamModal') {
             setSingleImportMode('quick');
@@ -304,11 +353,37 @@ function showModal(modalId) {
     }
 }
 
+function resetBatchImportForm() {
+    const form = document.getElementById('batchImportForm');
+    if (!form) return;
+
+    form.reset();
+
+    const fileInput = document.getElementById('jsonImportFile');
+    if (fileInput) {
+        fileInput.value = '';
+    }
+
+    const fileNameNode = document.getElementById('jsonImportFileName');
+    if (fileNameNode) {
+        fileNameNode.textContent = '支持单对象、对象数组，或 {"teams": [...]} 格式';
+    }
+}
+
 function hideModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.remove('show');
-        document.body.style.overflow = '';
+
+        const openModal = document.querySelector('.modal-overlay.show');
+        if (!openModal) {
+            document.body.style.overflow = '';
+            document.body.classList.remove('modal-open');
+        }
+
+        if (modalId === 'importTeamModal') {
+            resetBatchImportForm();
+        }
     }
 }
 
@@ -508,29 +583,29 @@ function toIsoStringWithOffset8(dateObj) {
 function buildOAuthJsonTemplate(parsedData) {
     const accessToken = parsedData.access_token || '';
     const refreshToken = parsedData.refresh_token || '';
-    const clientId = parsedData.client_id || '';
     const raw = parsedData.raw || {};
+    const idToken = raw.id_token || parsedData.id_token || '';
 
     const accessPayload = decodeJwtPayload(accessToken) || {};
+    const idPayload = decodeJwtPayload(idToken) || {};
     const accessAuth = accessPayload['https://api.openai.com/auth'] || {};
     const accessProfile = accessPayload['https://api.openai.com/profile'] || {};
+    const idAuth = idPayload['https://api.openai.com/auth'] || {};
 
-    const accountId = raw.account_id || parsedData.account_id || accessAuth.chatgpt_account_id || '';
-    const email = raw.email || parsedData.email || accessProfile.email || '';
+    const accountId = raw.account_id || parsedData.account_id || accessAuth.chatgpt_account_id || idAuth.chatgpt_account_id || '';
+    const email = raw.email || parsedData.email || accessProfile.email || idPayload.email || '';
     const exp = accessPayload.exp ? new Date(accessPayload.exp * 1000) : null;
     const expired = raw.expired || parsedData.expired || (exp ? toIsoStringWithOffset8(exp) : '');
 
     return {
         access_token: accessToken,
         account_id: accountId,
-        disabled: typeof raw.disabled === 'boolean' ? raw.disabled : false,
         email,
         expired,
-        id_token: raw.id_token || parsedData.id_token || '',
+        id_token: idToken,
         last_refresh: raw.last_refresh || parsedData.last_refresh || toIsoStringWithOffset8(new Date()),
         refresh_token: refreshToken,
-        type: raw.type || parsedData.type || 'codex',
-        client_id: clientId
+        type: raw.type || parsedData.type || 'codex'
     };
 }
 
@@ -654,6 +729,7 @@ async function handleBatchImport(event) {
 
     submitButton.disabled = true;
     submitButton.textContent = '导入中...';
+    let shouldResetBatchForm = false;
 
     try {
         const response = await fetch('/admin/teams/import', {
@@ -711,9 +787,9 @@ async function handleBatchImport(event) {
                         const statusText = res.success ? '成功' : '失败';
                         const row = document.createElement('tr');
                         row.innerHTML = `
-                            <td>${res.email}</td>
-                            <td class="${statusClass}">${statusText}</td>
-                            <td>${res.success ? (res.message || '导入成功') : res.error}</td>
+                            <td>${escapeHtml(res.email)}</td>
+                            <td class="${statusClass}">${escapeHtml(statusText)}</td>
+                            <td>${escapeHtml(res.success ? (res.message || '导入成功') : res.error)}</td>
                         `;
                         resultsBody.insertBefore(row, resultsBody.firstChild);
                     }
@@ -724,6 +800,7 @@ async function handleBatchImport(event) {
                     finalSummaryEl.textContent = `总数: ${data.total} | 成功: ${data.success_count} | 失败: ${data.failed_count}`;
 
                     if (data.failed_count === 0) {
+                        shouldResetBatchForm = true;
                         showToast('全部导入成功！', 'success');
                     } else {
                         showToast(`导入完成，成功 ${data.success_count} 条，失败 ${data.failed_count} 条`, 'warning');
@@ -761,6 +838,9 @@ async function handleBatchImport(event) {
     } catch (error) {
         showToast(error.message || '网络错误', 'error');
     } finally {
+        if (shouldResetBatchForm) {
+            resetBatchImportForm();
+        }
         submitButton.disabled = false;
         submitButton.textContent = '批量导入';
     }
@@ -869,9 +949,9 @@ async function handleJsonFileImport() {
                         const statusText = res.success ? '成功' : '失败';
                         const row = document.createElement('tr');
                         row.innerHTML = `
-                            <td>${res.email}</td>
-                            <td class="${statusClass}">${statusText}</td>
-                            <td>${res.success ? (res.message || '导入成功') : res.error}</td>
+                            <td>${escapeHtml(res.email)}</td>
+                            <td class="${statusClass}">${escapeHtml(statusText)}</td>
+                            <td>${escapeHtml(res.success ? (res.message || '导入成功') : res.error)}</td>
                         `;
                         resultsBody.insertBefore(row, resultsBody.firstChild);
                     }
@@ -1129,16 +1209,16 @@ async function loadModalMemberList(teamId) {
                 } else {
                     joinedTableBody.innerHTML = joinedMembers.map(m => `
                         <tr>
-                            <td>${m.email}</td>
+                            <td>${escapeHtml(m.email)}</td>
                             <td>
-                                <span class="role-badge role-${m.role}">
+                                <span class="role-badge role-${m.role === 'account-owner' ? 'account-owner' : 'member'}">
                                     ${m.role === 'account-owner' ? '所有者' : '成员'}
                                 </span>
                             </td>
                             <td>${formatDateTime(m.added_at)}</td>
                             <td style="text-align: right;">
                                 ${m.role !== 'account-owner' ? `
-                                    <button onclick="deleteMember('${teamId}', '${m.user_id}', '${m.email}', true)" class="btn btn-sm btn-danger">
+                                    <button onclick='deleteMember(${JSON.stringify(teamId)}, ${JSON.stringify(m.user_id)}, ${JSON.stringify(m.email)}, true)' class="btn btn-sm btn-danger">
                                         <i data-lucide="trash-2"></i> 删除
                                     </button>
                                 ` : '<span class="text-muted">不可删除</span>'}
@@ -1155,13 +1235,13 @@ async function loadModalMemberList(teamId) {
                 } else {
                     invitedTableBody.innerHTML = invitedMembers.map(m => `
                         <tr>
-                            <td>${m.email}</td>
+                            <td>${escapeHtml(m.email)}</td>
                             <td>
-                                <span class="role-badge role-${m.role}">成员</span>
+                                <span class="role-badge role-member">成员</span>
                             </td>
                             <td>${formatDateTime(m.added_at)}</td>
                             <td style="text-align: right;">
-                                <button onclick="revokeInvite('${teamId}', '${m.email}', true)" class="btn btn-sm btn-warning">
+                                <button onclick='revokeInvite(${JSON.stringify(teamId)}, ${JSON.stringify(m.email)}, true)' class="btn btn-sm btn-warning">
                                     <i data-lucide="undo"></i> 撤回
                                 </button>
                             </td>
@@ -1172,7 +1252,7 @@ async function loadModalMemberList(teamId) {
 
             if (window.lucide) lucide.createIcons();
         } else {
-            const errorMsg = `<tr><td colspan="4" style="text-align: center; color: var(--danger);">${result.error}</td></tr>`;
+            const errorMsg = `<tr><td colspan="4" style="text-align: center; color: var(--danger);">${escapeHtml(result.error)}</td></tr>`;
             if (joinedTableBody) joinedTableBody.innerHTML = errorMsg;
             if (invitedTableBody) invitedTableBody.innerHTML = errorMsg;
         }

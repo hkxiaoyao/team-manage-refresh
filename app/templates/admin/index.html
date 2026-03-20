@@ -131,7 +131,7 @@
                     </a>
                     {% endif %}
                     {% if status_filter %}
-                    <input type="hidden" name="status" value="{{ status_filter }}">
+                    <input type="hidden" name="status_filter" value="{{ status_filter }}">
                     {% endif %}
                 </div>
             </form>
@@ -352,7 +352,6 @@
     <button onclick="showModal('importTeamModal')" class="btn btn-primary">立即导入</button>
 </div>
 {% endif %}
-</div>
 
 <!-- 编辑 Team 模态框 -->
 <div id="editTeamModal" class="modal-overlay">
@@ -455,6 +454,11 @@
 {% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', () => {
+        const editTeamModal = document.getElementById('editTeamModal');
+        if (editTeamModal && editTeamModal.parentElement !== document.body) {
+            document.body.appendChild(editTeamModal);
+        }
+
         // Init Column Toggler
         initColumnToggler('.data-table', 'team_list_columns');
 
@@ -901,9 +905,10 @@
     function filterByStatus(status) {
         const url = new URL(window.location.href);
         if (status) {
-            url.searchParams.set('status', status);
+            url.searchParams.set('status_filter', status);
         } else {
             url.searchParams.delete('status');
+            url.searchParams.delete('status_filter');
         }
         url.searchParams.set('page', 1);
         window.location.href = url.toString();

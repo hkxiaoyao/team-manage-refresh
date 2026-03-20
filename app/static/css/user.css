@@ -505,7 +505,7 @@ body {
   position: fixed;
   right: 18px;
   top: 18px;
-  z-index: 50;
+  z-index: 4000;
   display: none;
   align-items: center;
   gap: 8px;
