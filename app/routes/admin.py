@@ -33,8 +33,6 @@ router = APIRouter(
     tags=["admin"]
 )
 
-import json
-
 # 服务实例
 team_service = TeamService()
 redemption_service = RedemptionService()
@@ -905,35 +903,72 @@ async def batch_refresh_teams(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    """
-    批量刷新 Team 信息
-    """
+    """批量刷新 Team 信息，并以流式方式返回进度。"""
     try:
-        logger.info(f"管理员批量刷新 {len(action_data.ids)} 个 Team")
-        
-        success_count = 0
-        failed_count = 0
-        
-        for team_id in action_data.ids:
-            try:
-                # 注意: 这里使用 sync_team_info, 它会自动处理 Token 刷新和信息同步
-                # force_refresh=True 代表强制同步 API
-                result = await team_service.sync_team_info(team_id, db, force_refresh=True)
-                if result.get("success"):
+        team_ids = [team_id for team_id in action_data.ids if isinstance(team_id, int)]
+        if not team_ids:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "请选择要刷新的 Team"}
+            )
+
+        logger.info(f"管理员批量刷新 {len(team_ids)} 个 Team")
+
+        async def progress_generator():
+            success_count = 0
+            failed_count = 0
+            total = len(team_ids)
+
+            yield json.dumps({
+                "type": "start",
+                "total": total,
+                "success_count": success_count,
+                "failed_count": failed_count,
+            }, ensure_ascii=False) + "\n"
+
+            for index, team_id in enumerate(team_ids, start=1):
+                item_success = False
+                item_error = None
+                item_message = None
+
+                try:
+                    result = await team_service.sync_team_info(team_id, db, force_refresh=True)
+                    item_success = bool(result.get("success"))
+                    item_message = result.get("message")
+                    item_error = result.get("error")
+                except Exception as ex:
+                    logger.error(f"批量刷新 Team {team_id} 时出错: {ex}")
+                    item_error = str(ex)
+
+                if item_success:
                     success_count += 1
                 else:
                     failed_count += 1
-            except Exception as ex:
-                logger.error(f"批量刷新 Team {team_id} 时出错: {ex}")
-                failed_count += 1
-        
-        return JSONResponse(content={
-            "success": True,
-            "message": f"批量刷新完成: 成功 {success_count}, 失败 {failed_count}",
-            "success_count": success_count,
-            "failed_count": failed_count
-        })
-    except Exception as e:
+
+                yield json.dumps({
+                    "type": "progress",
+                    "current": index,
+                    "total": total,
+                    "success_count": success_count,
+                    "failed_count": failed_count,
+                    "team_id": team_id,
+                    "last_result": {
+                        "success": item_success,
+                        "message": item_message,
+                        "error": item_error,
+                    }
+                }, ensure_ascii=False) + "\n"
+
+            yield json.dumps({
+                "type": "finish",
+                "total": total,
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "message": f"批量刷新完成: 成功 {success_count}, 失败 {failed_count}"
+            }, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(progress_generator(), media_type="application/x-ndjson")
+    except Exception:
         logger.exception("批量刷新 Team 失败")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

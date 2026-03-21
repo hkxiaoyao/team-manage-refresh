@@ -127,20 +127,15 @@ function hasVisibleModal() {
     return !!document.querySelector('.modal-overlay.show');
 }
 
-function getToastMountTarget() {
-    return document.body;
-}
-
 function syncToastMountTarget() {
     const toast = document.getElementById('toast');
     if (!toast) return;
 
-    const target = getToastMountTarget();
-    if (toast.parentElement !== target) {
-        target.appendChild(toast);
+    if (toast.parentElement !== document.body) {
+        document.body.appendChild(toast);
     }
 
-    toast.classList.toggle('in-modal', hasVisibleModal());
+    toast.classList.toggle('toast-over-modal', hasVisibleModal());
 }
 
 function showToast(message, type = 'info') {
@@ -155,7 +150,7 @@ function showToast(message, type = 'info') {
 
     toast.innerHTML = `<i data-lucide="${icon}"></i><span>${escapeHtml(message)}</span>`;
     toast.className = `toast ${type} show`;
-    toast.classList.toggle('in-modal', toast.parentElement !== document.body);
+    toast.classList.toggle('toast-over-modal', hasVisibleModal());
 
     if (window.lucide) {
         lucide.createIcons();

@@ -1273,7 +1273,7 @@ body.admin-theme .toast {
 /* Toast */
 .toast {
     position: fixed;
-    right: 1rem;
+    right: max(1rem, env(safe-area-inset-right, 0px));
     top: auto;
     bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     width: min(420px, calc(100vw - 2rem));
@@ -1282,43 +1282,29 @@ body.admin-theme .toast {
     background: var(--bg-surface);
     color: var(--text-main);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
     display: flex;
     align-items: center;
     gap: 0.75rem;
     --toast-offset: calc(100% + 20px);
-    transform: translateY(var(--toast-offset));
+    transform: translate3d(0, var(--toast-offset), 0);
     opacity: 0;
     transition: transform var(--transition-base), opacity var(--transition-fast);
-    z-index: 4000;
+    z-index: 10000;
     border: 1px solid var(--border-base);
     pointer-events: none;
+    isolation: isolate;
 }
 
-.toast.in-modal {
-    position: fixed;
-    top: auto;
-    right: max(1rem, env(safe-area-inset-right, 0px));
-    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
-    width: min(360px, calc(100% - 2rem));
-    --toast-offset: calc(100% + 16px);
-    z-index: 4100;
+.toast.toast-over-modal {
     background: color-mix(in srgb, var(--toast-bg) 96%, var(--bg-surface) 4%);
     color: var(--text-main);
     border-color: color-mix(in srgb, var(--toast-border) 85%, var(--border-base) 15%);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
-}
-
-body.modal-open .toast:not(.in-modal) {
-    top: 1rem;
-    bottom: auto;
-    --toast-offset: calc(-100% - 20px);
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.34);
 }
 
 .toast.show {
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
     opacity: 1;
 }
 
