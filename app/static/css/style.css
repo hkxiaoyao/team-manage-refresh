@@ -1274,6 +1274,7 @@ body.admin-theme .toast {
 .toast {
     position: fixed;
     right: 1rem;
+    top: auto;
     bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     width: min(420px, calc(100vw - 2rem));
     min-height: 52px;
@@ -1285,11 +1286,18 @@ body.admin-theme .toast {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    transform: translateY(calc(100% + 20px));
+    --toast-offset: calc(100% + 20px);
+    transform: translateY(var(--toast-offset));
     opacity: 0;
     transition: transform var(--transition-base), opacity var(--transition-fast);
     z-index: 4000;
     border: 1px solid var(--border-base);
+}
+
+body.modal-open .toast {
+    top: 1rem;
+    bottom: auto;
+    --toast-offset: calc(-100% - 20px);
 }
 
 .toast.show {
