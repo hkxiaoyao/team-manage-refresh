@@ -12,7 +12,7 @@ from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.dependencies.auth import require_admin
 from app.services.team import TeamService
 from app.services.redemption import RedemptionService
@@ -900,7 +900,6 @@ async def enable_team_device_auth(
 @router.post("/teams/batch-refresh")
 async def batch_refresh_teams(
     action_data: BulkActionRequest,
-    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
     """批量刷新 Team 信息，并以流式方式返回进度。"""
@@ -926,38 +925,39 @@ async def batch_refresh_teams(
                 "failed_count": failed_count,
             }, ensure_ascii=False) + "\n"
 
-            for index, team_id in enumerate(team_ids, start=1):
-                item_success = False
-                item_error = None
-                item_message = None
+            async with AsyncSessionLocal() as db_session:
+                for index, team_id in enumerate(team_ids, start=1):
+                    item_success = False
+                    item_error = None
+                    item_message = None
 
-                try:
-                    result = await team_service.sync_team_info(team_id, db, force_refresh=True)
-                    item_success = bool(result.get("success"))
-                    item_message = result.get("message")
-                    item_error = result.get("error")
-                except Exception as ex:
-                    logger.error(f"批量刷新 Team {team_id} 时出错: {ex}")
-                    item_error = str(ex)
+                    try:
+                        result = await team_service.sync_team_info(team_id, db_session, force_refresh=True)
+                        item_success = bool(result.get("success"))
+                        item_message = result.get("message")
+                        item_error = result.get("error")
+                    except Exception as ex:
+                        logger.error(f"批量刷新 Team {team_id} 时出错: {ex}")
+                        item_error = str(ex)
 
-                if item_success:
-                    success_count += 1
-                else:
-                    failed_count += 1
+                    if item_success:
+                        success_count += 1
+                    else:
+                        failed_count += 1
 
-                yield json.dumps({
-                    "type": "progress",
-                    "current": index,
-                    "total": total,
-                    "success_count": success_count,
-                    "failed_count": failed_count,
-                    "team_id": team_id,
-                    "last_result": {
-                        "success": item_success,
-                        "message": item_message,
-                        "error": item_error,
-                    }
-                }, ensure_ascii=False) + "\n"
+                    yield json.dumps({
+                        "type": "progress",
+                        "current": index,
+                        "total": total,
+                        "success_count": success_count,
+                        "failed_count": failed_count,
+                        "team_id": team_id,
+                        "last_result": {
+                            "success": item_success,
+                            "message": item_message,
+                            "error": item_error,
+                        }
+                    }, ensure_ascii=False) + "\n"
 
             yield json.dumps({
                 "type": "finish",
