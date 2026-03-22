@@ -41,22 +41,22 @@
 
 <!-- 操作栏 -->
 <div class="content-section">
-    <div class="section-header">
-        <div class="header-group">
-            <div class="filter-tabs">
-                <button onclick="filterByStatus('')" class="filter-tab {% if not status_filter %}active{% endif %}"
-                    id="filter-all">全部</button>
-                <button onclick="filterByStatus('unused')"
-                    class="filter-tab {% if status_filter == 'unused' %}active{% endif %}"
-                    id="filter-unused">未使用</button>
-                <button onclick="filterByStatus('used')"
-                    class="filter-tab {% if status_filter == 'used' %}active{% endif %}" id="filter-used">已使用</button>
-                <button onclick="filterByStatus('expired')"
-                    class="filter-tab {% if status_filter == 'expired' %}active{% endif %}"
-                    id="filter-expired">已过期</button>
-            </div>
+    <div class="section-header codes-toolbar">
+        <div class="filter-tabs">
+            <button onclick="filterByStatus('')" class="filter-tab {% if not status_filter %}active{% endif %}"
+                id="filter-all">全部</button>
+            <button onclick="filterByStatus('unused')"
+                class="filter-tab {% if status_filter == 'unused' %}active{% endif %}"
+                id="filter-unused">未使用</button>
+            <button onclick="filterByStatus('used')"
+                class="filter-tab {% if status_filter == 'used' %}active{% endif %}" id="filter-used">已使用</button>
+            <button onclick="filterByStatus('expired')"
+                class="filter-tab {% if status_filter == 'expired' %}active{% endif %}"
+                id="filter-expired">已过期</button>
+        </div>
 
-            <form action="/admin/codes" method="get" class="search-form">
+        <div class="codes-toolbar-actions">
+            <form action="/admin/codes" method="get" class="search-form codes-search-form">
                 <div class="input-group-clean">
                     <i data-lucide="search" style="width: 14px; height: 14px;"></i>
                     <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索兑换码..."
@@ -68,26 +68,26 @@
                     {% endif %}
                 </div>
             </form>
-        </div>
 
-        <div class="header-actions">
-            <div class="dropdown-wrapper">
-                <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('columnToggleDropdown')">
-                    <i data-lucide="columns" style="width: 16px; height: 16px;"></i> 列设置
-                </button>
-                <div id="columnToggleDropdown" class="dropdown-menu">
-                    <!-- Column checkboxes will be generated here -->
+            <div class="header-actions codes-header-actions">
+                <div class="dropdown-wrapper">
+                    <button class="btn btn-secondary btn-sm dropdown-toggle" onclick="toggleDropdown('columnToggleDropdown')">
+                        <i data-lucide="columns" style="width: 16px; height: 16px;"></i> 列设置
+                    </button>
+                    <div id="columnToggleDropdown" class="dropdown-menu">
+                        <!-- Column checkboxes will be generated here -->
+                    </div>
                 </div>
+                <button onclick="scanInvalidCodes()" class="btn btn-secondary btn-sm">
+                    <i data-lucide="shield-alert" style="width: 16px; height: 16px;"></i> 扫描无效兑换码
+                </button>
+                <button onclick="showModal('generateCodeModal')" class="btn btn-primary btn-sm">
+                    <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 生成兑换码
+                </button>
+                <button onclick="exportCodes()" class="btn btn-secondary btn-sm">
+                    <i data-lucide="download" style="width: 16px; height: 16px;"></i> 导出
+                </button>
             </div>
-            <button onclick="scanInvalidCodes()" class="btn btn-secondary">
-                <i data-lucide="shield-alert" style="width: 16px; height: 16px;"></i> 扫描无效兑换码
-            </button>
-            <button onclick="showModal('generateCodeModal')" class="btn btn-primary">
-                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 生成兑换码
-            </button>
-            <button onclick="exportCodes()" class="btn btn-secondary">
-                <i data-lucide="download" style="width: 16px; height: 16px;"></i> 导出
-            </button>
         </div>
     </div>
 </div>
@@ -432,6 +432,38 @@
 
 {% block extra_css %}
 <style>
+    .codes-toolbar {
+        align-items: center;
+    }
+
+    .codes-toolbar-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        flex: 1;
+        flex-wrap: wrap;
+    }
+
+    .codes-search-form {
+        margin: 0;
+    }
+
+    .codes-search-form .input-group-clean {
+        min-width: 260px;
+    }
+
+    .codes-header-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+
+    .codes-header-actions .btn {
+        white-space: nowrap;
+        padding: 0.65rem 0.9rem;
+    }
+
     .bulk-action-bar {
         position: fixed;
         bottom: 2rem;
@@ -483,6 +515,34 @@
         align-items: center;
         gap: 1rem;
         backdrop-filter: blur(8px);
+    }
+
+    @media (max-width: 1024px) {
+        .codes-toolbar {
+            align-items: stretch;
+        }
+
+        .codes-toolbar-actions {
+            width: 100%;
+            justify-content: space-between;
+        }
+
+        .codes-search-form {
+            flex: 1 1 240px;
+        }
+
+        .codes-search-form .input-group-clean {
+            min-width: 0;
+            width: 100%;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .codes-toolbar-actions,
+        .codes-header-actions {
+            width: 100%;
+            justify-content: flex-start;
+        }
     }
 </style>
 {% endblock %}
