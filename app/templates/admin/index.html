@@ -135,6 +135,78 @@
         z-index: 9999 !important;
     }
 
+    .team-toolbar .batch-actions-group {
+        max-width: 100%;
+    }
+
+    .team-toolbar .batch-actions-group .selected-count {
+        white-space: nowrap;
+    }
+
+    .action-buttons .btn-icon i,
+    .action-buttons .btn-icon svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+    }
+
+    .btn-icon-fallback {
+        display: none;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.01em;
+    }
+
+    @supports (-webkit-touch-callout: none) {
+        .action-buttons .btn-icon i,
+        .action-buttons .btn-icon svg {
+            display: none;
+        }
+
+        .action-buttons .btn-icon .btn-icon-fallback {
+            display: inline-block;
+        }
+    }
+
+    @media (min-width: 1025px) {
+        .team-toolbar .header-group {
+            flex-wrap: wrap;
+        }
+
+        .team-toolbar #batchActions.batch-actions-group {
+            flex: 1 1 100%;
+            width: 100%;
+            order: -1;
+            justify-content: flex-start;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding-right: 0.75rem;
+        }
+
+        .team-toolbar #batchActions.batch-actions-group .btn {
+            flex: 0 0 auto;
+        }
+
+        .team-toolbar #batchActions.batch-actions-group .selected-count {
+            margin-left: auto !important;
+            flex: 0 0 auto;
+        }
+    }
+
+    @supports (-webkit-touch-callout: none) {
+        .team-list-table-container .data-table td:last-child {
+            min-width: 248px;
+        }
+
+        .action-buttons .btn-icon {
+            width: 34px;
+            height: 34px;
+            min-height: 34px;
+            padding: 0;
+        }
+    }
+
     @media (max-width: 1240px) {
         .team-toolbar {
             flex-wrap: wrap;
@@ -402,29 +474,35 @@
                 <td>
                     <div class="action-buttons">
                         <button class="btn btn-sm btn-icon btn-minimal btn-info btn-view-members"
-                            data-id="{{ team.id }}" data-email="{{ team.email }}" title="查看成员">
+                            data-id="{{ team.id }}" data-email="{{ team.email }}" title="查看成员" aria-label="查看成员">
                             <i data-lucide="users" style="width: 16px; height: 16px;"></i>
+                            <span class="btn-icon-fallback" aria-hidden="true">员</span>
                         </button>
                         <button class="btn btn-sm btn-icon btn-minimal btn-primary btn-edit-team"
-                            data-id="{{ team.id }}" title="编辑">
+                            data-id="{{ team.id }}" title="编辑" aria-label="编辑">
                             <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
+                            <span class="btn-icon-fallback" aria-hidden="true">编</span>
                         </button>
                         <button class="btn btn-sm btn-icon btn-minimal btn-secondary btn-refresh-team"
-                            data-id="{{ team.id }}" title="刷新">
+                            data-id="{{ team.id }}" title="刷新" aria-label="刷新">
                             <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                            <span class="btn-icon-fallback" aria-hidden="true">刷</span>
                         </button>
                         <button class="btn btn-sm btn-icon btn-minimal btn-success btn-enable-device-auth"
-                            data-id="{{ team.id }}" title="一键开启设备代码验证">
+                            data-id="{{ team.id }}" title="一键开启设备代码验证" aria-label="开启设备验证">
                             <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
+                            <span class="btn-icon-fallback" aria-hidden="true">验</span>
                         </button>
                         <button class="btn btn-sm btn-icon btn-minimal btn-primary btn-push-cliproxyapi"
-                            data-id="{{ team.id }}" data-email="{{ team.email }}" title="推送到 CliproxyAPI">
+                            data-id="{{ team.id }}" data-email="{{ team.email }}" title="推送到 CliproxyAPI" aria-label="推送到 CliproxyAPI">
                             <i data-lucide="send" style="width: 16px; height: 16px;"></i>
+                            <span class="btn-icon-fallback" aria-hidden="true">推</span>
                         </button>
                         <button type="button" class="btn btn-sm btn-icon btn-minimal btn-danger btn-delete-team"
-                            data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除"
+                            data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除" aria-label="删除"
                             onclick='deleteTeam({{ team.id }}, {{ team.email|tojson }})'>
                             <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                            <span class="btn-icon-fallback" aria-hidden="true">删</span>
                         </button>
                     </div>
                 </td>
