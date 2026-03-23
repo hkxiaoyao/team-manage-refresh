@@ -121,9 +121,28 @@ async function initThemeSwitcher() {
 
 
 // Toast 提示函数
+let toastTimer = null;
+
+function hasVisibleModal() {
+    return !!document.querySelector('.modal-overlay.show');
+}
+
+function syncToastMountTarget() {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+
+    if (toast.parentElement !== document.body) {
+        document.body.appendChild(toast);
+    }
+
+    toast.classList.toggle('toast-over-modal', hasVisibleModal());
+}
+
 function showToast(message, type = 'info', options = {}) {
     const toast = document.getElementById('toast');
     if (!toast) return;
+
+    syncToastMountTarget();
 
     const iconMap = {
         success: 'check-circle',
@@ -150,11 +169,6 @@ function showToast(message, type = 'info', options = {}) {
     const detail = escapeHtml(String(message || ''));
     const duration = Number.isFinite(options.duration) ? Number(options.duration) : (durationMap[toastType] || 3000);
 
-    if (window.__toastTimer) {
-        window.clearTimeout(window.__toastTimer);
-        window.__toastTimer = null;
-    }
-
     toast.innerHTML = `
         <div class="toast-icon-wrap">
             <i data-lucide="${icon}"></i>
@@ -165,14 +179,32 @@ function showToast(message, type = 'info', options = {}) {
         </div>
     `;
     toast.className = `toast ${toastType} show`;
+    toast.classList.toggle('toast-over-modal', hasVisibleModal());
 
     if (window.lucide) {
         lucide.createIcons();
     }
 
-    window.__toastTimer = window.setTimeout(() => {
+    if (toastTimer) {
+        clearTimeout(toastTimer);
+    }
+
+    toastTimer = setTimeout(() => {
         toast.classList.remove('show');
+        toastTimer = null;
+        syncToastMountTarget();
     }, Math.max(duration, 1200));
+}
+
+function mountGlobalOverlayNodes() {
+    const nodes = document.querySelectorAll('.modal-overlay, #toast');
+    nodes.forEach((node) => {
+        if (node && node.parentElement !== document.body) {
+            document.body.appendChild(node);
+        }
+    });
+
+    syncToastMountTarget();
 }
 
 // 日期格式化函数
@@ -275,13 +307,74 @@ function syncResponsiveSidebarMount() {
     }
 }
 
+function prepareFloatingDropdown(menu) {
+    if (!menu || !menu.classList.contains('dropdown-menu-floating')) return;
+
+    const wrapper = menu._dropdownWrapper || menu.closest('.dropdown-wrapper');
+    if (!wrapper) return;
+
+    menu._dropdownWrapper = wrapper;
+    if (menu.parentElement !== document.body) {
+        document.body.appendChild(menu);
+    }
+}
+
+function mountFloatingDropdownsToBody() {
+    document.querySelectorAll('.dropdown-menu-floating').forEach((menu) => {
+        prepareFloatingDropdown(menu);
+    });
+}
+
+function positionFloatingDropdown(menu, triggerEl = null) {
+    if (!menu || !menu.classList.contains('dropdown-menu-floating')) return;
+
+    prepareFloatingDropdown(menu);
+
+    if (triggerEl) {
+        menu._dropdownTrigger = triggerEl;
+    }
+
+    const anchor = triggerEl
+        || menu._dropdownTrigger
+        || menu._dropdownWrapper?.querySelector('.dropdown-toggle')
+        || menu._dropdownWrapper;
+    if (!anchor) return;
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const viewportPadding = 16;
+    const menuWidth = Math.min(260, window.innerWidth - viewportPadding * 2);
+
+    let left = anchorRect.left;
+    if (left + menuWidth + viewportPadding > window.innerWidth) {
+        left = Math.max(viewportPadding, anchorRect.right - menuWidth);
+    }
+    left = Math.max(viewportPadding, left);
+
+    menu.style.position = 'fixed';
+    menu.style.top = `${anchorRect.bottom + 8}px`;
+    menu.style.left = `${left}px`;
+    menu.style.right = 'auto';
+    menu.style.width = `${menuWidth}px`;
+    menu.style.maxWidth = 'calc(100vw - 2rem)';
+    menu.style.zIndex = '9999';
+}
+
+function closeFloatingDropdowns() {
+    document.querySelectorAll('.dropdown-menu.show').forEach((menu) => {
+        menu.classList.remove('show');
+    });
+}
+
 // 页面加载完成后执行
 document.addEventListener('DOMContentLoaded', function () {
+    mountFloatingDropdownsToBody();
+
     // 检查认证状态
     checkAuthStatus();
 
     cleanupLegacyThemeSettingsSection();
     initThemeSwitcher();
+    mountGlobalOverlayNodes();
     syncResponsiveSidebarMount();
     window.addEventListener('resize', syncResponsiveSidebarMount);
 
@@ -374,6 +467,8 @@ function showModal(modalId) {
         if (modalId === 'importTeamModal') {
             setSingleImportMode('quick');
         }
+
+        syncToastMountTarget();
     }
 }
 
@@ -408,6 +503,8 @@ function hideModal(modalId) {
         if (modalId === 'importTeamModal') {
             resetBatchImportForm();
         }
+
+        syncToastMountTarget();
     }
 }
 
@@ -1053,6 +1150,85 @@ async function handleJsonFileImport() {
 
 // === 兑换码生成逻辑 ===
 
+function ensureGenerateCodeResultNodes() {
+    const singleGenerateEl = document.getElementById('singleGenerate');
+    let singleResultEl = document.getElementById('singleResult');
+    let generatedCodeEl = document.getElementById('generatedCode');
+
+    if (singleGenerateEl && !singleResultEl) {
+        singleResultEl = document.createElement('div');
+        singleResultEl.id = 'singleResult';
+        singleResultEl.className = 'result-box';
+        singleResultEl.style.display = 'none';
+        singleResultEl.innerHTML = `
+            <h4>生成成功</h4>
+            <div class="code-display">
+                <code id="generatedCode"></code>
+                <button onclick="copyCode()" class="btn btn-sm btn-secondary">复制</button>
+            </div>
+        `;
+        singleGenerateEl.appendChild(singleResultEl);
+        generatedCodeEl = singleResultEl.querySelector('#generatedCode');
+    } else if (singleResultEl && !generatedCodeEl) {
+        generatedCodeEl = document.createElement('code');
+        generatedCodeEl.id = 'generatedCode';
+
+        let codeDisplayEl = singleResultEl.querySelector('.code-display');
+        if (!codeDisplayEl) {
+            codeDisplayEl = document.createElement('div');
+            codeDisplayEl.className = 'code-display';
+            singleResultEl.appendChild(codeDisplayEl);
+        }
+        codeDisplayEl.prepend(generatedCodeEl);
+    }
+
+    const batchGenerateEl = document.getElementById('batchGenerate');
+    let batchResultEl = document.getElementById('batchResult');
+    let batchTotalEl = document.getElementById('batchTotal');
+    let batchCodesEl = document.getElementById('batchCodes');
+
+    if (batchGenerateEl && !batchResultEl) {
+        batchResultEl = document.createElement('div');
+        batchResultEl.id = 'batchResult';
+        batchResultEl.className = 'result-box';
+        batchResultEl.style.display = 'none';
+        batchResultEl.innerHTML = `
+            <h4>批量生成成功</h4>
+            <p>成功生成 <strong id="batchTotal">0</strong> 个兑换码</p>
+            <textarea id="batchCodes" readonly rows="5" class="form-control" style="margin: 10px 0;"></textarea>
+            <button onclick="copyBatchCodes()" class="btn btn-sm btn-secondary">复制全部</button>
+            <button onclick="downloadCodes()" class="btn btn-sm btn-secondary">下载</button>
+        `;
+        batchGenerateEl.appendChild(batchResultEl);
+        batchTotalEl = batchResultEl.querySelector('#batchTotal');
+        batchCodesEl = batchResultEl.querySelector('#batchCodes');
+    } else if (batchResultEl) {
+        if (!batchTotalEl) {
+            batchTotalEl = document.createElement('strong');
+            batchTotalEl.id = 'batchTotal';
+            batchTotalEl.textContent = '0';
+            batchResultEl.prepend(batchTotalEl);
+        }
+        if (!batchCodesEl) {
+            batchCodesEl = document.createElement('textarea');
+            batchCodesEl.id = 'batchCodes';
+            batchCodesEl.readOnly = true;
+            batchCodesEl.rows = 5;
+            batchCodesEl.className = 'form-control';
+            batchCodesEl.style.margin = '10px 0';
+            batchResultEl.appendChild(batchCodesEl);
+        }
+    }
+
+    return {
+        generatedCodeEl,
+        singleResultEl,
+        batchTotalEl,
+        batchCodesEl,
+        batchResultEl,
+    };
+}
+
 async function generateSingle(event) {
     event.preventDefault();
     const form = event.target;
@@ -1075,10 +1251,22 @@ async function generateSingle(event) {
     });
 
     if (result.success) {
-        document.getElementById('generatedCode').textContent = result.data.code;
-        document.getElementById('singleResult').style.display = 'block';
+        const { generatedCodeEl, singleResultEl } = ensureGenerateCodeResultNodes();
+        if (generatedCodeEl && singleResultEl) {
+            generatedCodeEl.textContent = result.data.code;
+            singleResultEl.style.display = 'block';
+        } else {
+            console.warn('生成兑换码结果区域缺失，已回退为 toast 展示', {
+                hasGeneratedCode: !!generatedCodeEl,
+                hasSingleResult: !!singleResultEl,
+            });
+            hideModal('generateCodeModal');
+            showToast(`兑换码生成成功：${result.data.code}`, 'success');
+        }
         form.reset();
-        showToast('兑换码生成成功', 'success');
+        if (generatedCodeEl && singleResultEl) {
+            showToast('兑换码生成成功', 'success');
+        }
         // 如果在列表中，延迟刷新
         if (window.location.pathname === '/admin/codes') {
             setTimeout(() => location.reload(), 2000);
@@ -1115,11 +1303,24 @@ async function generateBatch(event) {
     });
 
     if (result.success) {
-        document.getElementById('batchTotal').textContent = result.data.total;
-        document.getElementById('batchCodes').value = result.data.codes.join('\n');
-        document.getElementById('batchResult').style.display = 'block';
+        const { batchTotalEl, batchCodesEl, batchResultEl } = ensureGenerateCodeResultNodes();
+        if (batchTotalEl && batchCodesEl && batchResultEl) {
+            batchTotalEl.textContent = result.data.total;
+            batchCodesEl.value = result.data.codes.join('\n');
+            batchResultEl.style.display = 'block';
+        } else {
+            console.warn('批量生成结果区域缺失，已回退为 toast 展示', {
+                hasBatchTotal: !!batchTotalEl,
+                hasBatchCodes: !!batchCodesEl,
+                hasBatchResult: !!batchResultEl,
+            });
+            hideModal('generateCodeModal');
+            showToast(`成功生成 ${result.data.total} 个兑换码`, 'success');
+        }
         form.reset();
-        showToast(`成功生成 ${result.data.total} 个兑换码`, 'success');
+        if (batchTotalEl && batchCodesEl && batchResultEl) {
+            showToast(`成功生成 ${result.data.total} 个兑换码`, 'success');
+        }
         if (window.location.pathname === '/admin/codes') {
             setTimeout(() => location.reload(), 3000);
         }

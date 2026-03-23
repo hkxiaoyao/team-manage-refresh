@@ -41,22 +41,22 @@
 
 <!-- 操作栏 -->
 <div class="content-section">
-    <div class="section-header">
-        <div class="header-group">
-            <div class="filter-tabs">
-                <button onclick="filterByStatus('')" class="filter-tab {% if not status_filter %}active{% endif %}"
-                    id="filter-all">全部</button>
-                <button onclick="filterByStatus('unused')"
-                    class="filter-tab {% if status_filter == 'unused' %}active{% endif %}"
-                    id="filter-unused">未使用</button>
-                <button onclick="filterByStatus('used')"
-                    class="filter-tab {% if status_filter == 'used' %}active{% endif %}" id="filter-used">已使用</button>
-                <button onclick="filterByStatus('expired')"
-                    class="filter-tab {% if status_filter == 'expired' %}active{% endif %}"
-                    id="filter-expired">已过期</button>
-            </div>
+    <div class="section-header codes-toolbar">
+        <div class="filter-tabs">
+            <button onclick="filterByStatus('')" class="filter-tab {% if not status_filter %}active{% endif %}"
+                id="filter-all">全部</button>
+            <button onclick="filterByStatus('unused')"
+                class="filter-tab {% if status_filter == 'unused' %}active{% endif %}"
+                id="filter-unused">未使用</button>
+            <button onclick="filterByStatus('used')"
+                class="filter-tab {% if status_filter == 'used' %}active{% endif %}" id="filter-used">已使用</button>
+            <button onclick="filterByStatus('expired')"
+                class="filter-tab {% if status_filter == 'expired' %}active{% endif %}"
+                id="filter-expired">已过期</button>
+        </div>
 
-            <form action="/admin/codes" method="get" class="search-form">
+        <div class="codes-toolbar-actions">
+            <form action="/admin/codes" method="get" class="search-form codes-search-form">
                 <div class="input-group-clean">
                     <i data-lucide="search" style="width: 14px; height: 14px;"></i>
                     <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索兑换码..."
@@ -68,23 +68,26 @@
                     {% endif %}
                 </div>
             </form>
-        </div>
 
-        <div class="header-actions">
-            <div class="dropdown-wrapper">
-                <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('columnToggleDropdown')">
-                    <i data-lucide="columns" style="width: 16px; height: 16px;"></i> 列设置
-                </button>
-                <div id="columnToggleDropdown" class="dropdown-menu">
-                    <!-- Column checkboxes will be generated here -->
+            <div class="header-actions codes-header-actions">
+                <div class="dropdown-wrapper">
+                    <button class="btn btn-secondary btn-sm dropdown-toggle" onclick="toggleDropdown('columnToggleDropdown', this)">
+                        <i data-lucide="columns" style="width: 16px; height: 16px;"></i> 列设置
+                    </button>
+                    <div id="columnToggleDropdown" class="dropdown-menu dropdown-menu-floating">
+                        <!-- Column checkboxes will be generated here -->
+                    </div>
                 </div>
+                <button onclick="scanInvalidCodes()" class="btn btn-secondary btn-sm">
+                    <i data-lucide="shield-alert" style="width: 16px; height: 16px;"></i> 扫描无效兑换码
+                </button>
+                <button onclick="showModal('generateCodeModal')" class="btn btn-primary btn-sm">
+                    <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 生成兑换码
+                </button>
+                <button onclick="exportCodes()" class="btn btn-secondary btn-sm">
+                    <i data-lucide="download" style="width: 16px; height: 16px;"></i> 导出
+                </button>
             </div>
-            <button onclick="showModal('generateCodeModal')" class="btn btn-primary">
-                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 生成兑换码
-            </button>
-            <button onclick="exportCodes()" class="btn btn-secondary">
-                <i data-lucide="download" style="width: 16px; height: 16px;"></i> 导出
-            </button>
         </div>
     </div>
 </div>
@@ -164,12 +167,10 @@
                                 class="btn btn-sm btn-icon btn-minimal btn-info" title="编辑">
                                 <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i>
                             </button>
-                            {% if code.status == 'unused' %}
                             <button onclick='deleteCode({{ code.code|tojson }})'
                                 class="btn btn-sm btn-icon btn-minimal btn-danger" title="删除">
                                 <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                             </button>
-                            {% endif %}
                         </div>
                     </td>
                 </tr>
@@ -353,10 +354,123 @@
         </div>
     </div>
 </div>
+
+<!-- 无效兑换码扫描结果 -->
+<div id="invalidCodesModal" class="modal-overlay">
+    <div class="modal" style="max-width: 760px;">
+        <div class="modal-header">
+            <h3>无效兑换码扫描结果</h3>
+            <button class="modal-close" onclick="hideModal('invalidCodesModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-info" style="margin-bottom: 1rem;">
+                扫描可安全清理的无效兑换码。
+            </div>
+            <div id="invalidCodesEmptyState" class="empty-state" style="display: none; padding: 1rem 0;">
+                <p>当前没有扫描到可安全清理的无效兑换码。</p>
+            </div>
+            <div id="invalidCodesTableWrapper" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">
+                    <div>共扫描到 <strong id="invalidCodesCount">0</strong> 个可清理兑换码</div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="selectAllInvalidCodes" style="width: auto; margin: 0;" onclick="toggleSelectAllInvalidCodes(this)"></th>
+                                <th>兑换码</th>
+                                <th>过期参考时间</th>
+                                <th>关联记录数</th>
+                                <th>关联 Team 状态</th>
+                                <th>说明</th>
+                            </tr>
+                        </thead>
+                        <tbody id="invalidCodesTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="invalidCleanupBar" class="invalid-cleanup-bar" style="display: none;">
+                    <div>已选择 <strong id="invalidCleanupSelectedCount">0</strong> 个无效兑换码</div>
+                    <button onclick="cleanupInvalidCodes()" class="btn btn-danger">
+                        <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> 确认删除
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除兑换码确认模态框 -->
+<div id="deleteCodeModal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>确认删除兑换码</h3>
+            <button class="modal-close" onclick="hideModal('deleteCodeModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="alert alert-warning" style="margin-bottom: 1rem;">
+                所有兑换码都支持手动发起删除，但系统只会真正删除<strong>没有任何关联记录</strong>的兑换码。已使用或仍有关联记录的兑换码会被明确拦截，防止误删。
+            </div>
+            <form id="deleteCodeForm" onsubmit="handleDeleteCode(event)">
+                <input type="hidden" id="delete-code-value">
+                <div class="form-group">
+                    <label>待删除兑换码</label>
+                    <input type="text" id="delete-code-display" class="form-control" readonly
+                        style="background: rgba(0,0,0,0.05);">
+                </div>
+                <div class="form-group">
+                    <label>请输入完整兑换码确认删除</label>
+                    <input type="text" id="delete-code-confirm" class="form-control"
+                        placeholder="请输入上方完整兑换码" autocomplete="off" required>
+                    <small class="form-text">如果该兑换码存在任何关联记录，系统会直接拒绝删除；历史脏数据请使用上方“扫描无效兑换码”功能单独处理。</small>
+                </div>
+                <button type="submit" class="btn btn-danger" style="margin-top: 1rem;">确认删除</button>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_css %}
 <style>
+    .codes-toolbar {
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: nowrap;
+        gap: 1rem;
+    }
+
+    .codes-toolbar-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        flex: 0 1 auto;
+        flex-wrap: nowrap;
+        min-width: 0;
+    }
+
+    .codes-search-form {
+        margin: 0;
+        flex: 0 0 auto;
+    }
+
+    .codes-search-form .input-group-clean {
+        width: 240px;
+        min-width: 240px;
+    }
+
+    .codes-header-actions {
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+
+    .codes-header-actions .btn {
+        white-space: nowrap;
+        padding: 0.6rem 0.8rem;
+        font-size: 0.875rem;
+    }
+
     .bulk-action-bar {
         position: fixed;
         bottom: 2rem;
@@ -395,12 +509,101 @@
         display: flex;
         gap: 0.5rem;
     }
+
+    .invalid-cleanup-bar {
+        position: sticky;
+        bottom: 0;
+        margin-top: 1rem;
+        padding: 1rem;
+        border-top: 1px solid var(--border-color);
+        background: rgba(255, 255, 255, 0.96);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        backdrop-filter: blur(8px);
+    }
+
+    @media (max-width: 1240px) {
+        .codes-toolbar {
+            align-items: stretch;
+            flex-wrap: wrap;
+        }
+
+        .codes-toolbar-actions {
+            width: 100%;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .codes-search-form {
+            flex: 1 1 240px;
+        }
+
+        .codes-search-form .input-group-clean {
+            min-width: 0;
+            width: 100%;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .codes-toolbar-actions,
+        .codes-header-actions {
+            width: 100%;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    let scannedInvalidCodes = [];
+
+    function prepareFloatingDropdowns() {
+        document.querySelectorAll('.dropdown-menu-floating').forEach((menu) => {
+            const wrapper = menu.closest('.dropdown-wrapper');
+            if (!wrapper || menu.parentElement === document.body) return;
+
+            menu._dropdownWrapper = wrapper;
+            document.body.appendChild(menu);
+        });
+    }
+
+    function positionFloatingDropdown(menu) {
+        if (!menu || !menu.classList.contains('dropdown-menu-floating')) return;
+
+        const wrapper = menu._dropdownWrapper || menu.closest('.dropdown-wrapper');
+        if (!wrapper) return;
+
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const viewportPadding = 16;
+        const menuWidth = Math.min(260, window.innerWidth - viewportPadding * 2);
+
+        let left = wrapperRect.left;
+        if (left + menuWidth + viewportPadding > window.innerWidth) {
+            left = window.innerWidth - menuWidth - viewportPadding;
+        }
+        left = Math.max(viewportPadding, left);
+
+        menu.style.position = 'fixed';
+        menu.style.top = `${wrapperRect.bottom + 8}px`;
+        menu.style.left = `${left}px`;
+        menu.style.right = 'auto';
+        menu.style.width = `${menuWidth}px`;
+        menu.style.maxWidth = 'calc(100vw - 2rem)';
+        menu.style.zIndex = '9999';
+    }
+
+    function closeAllDropdowns() {
+        document.querySelectorAll('.dropdown-menu.show').forEach((menu) => {
+            menu.classList.remove('show');
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+        prepareFloatingDropdowns();
         // Init Column Toggler
         initColumnToggler('.data-table', 'codes_list_columns');
     });
@@ -458,20 +661,32 @@
         });
     }
 
-    function toggleDropdown(id) {
+    function toggleDropdown(id, triggerEl = null) {
         const el = document.getElementById(id);
-        if (el) {
-            el.classList.toggle('show');
-            document.querySelectorAll('.dropdown-menu').forEach(d => {
-                if (d.id !== id) d.classList.remove('show');
-            });
+        if (!el) return;
+
+        const shouldShow = !el.classList.contains('show');
+        closeFloatingDropdowns();
+
+        if (shouldShow) {
+            el.classList.add('show');
+            positionFloatingDropdown(el, triggerEl);
+            requestAnimationFrame(() => positionFloatingDropdown(el));
         }
     }
 
+    window.addEventListener('resize', () => {
+        document.querySelectorAll('.dropdown-menu.show.dropdown-menu-floating').forEach((menu) => positionFloatingDropdown(menu));
+    });
+
+    window.addEventListener('scroll', () => {
+        document.querySelectorAll('.dropdown-menu.show.dropdown-menu-floating').forEach((menu) => positionFloatingDropdown(menu));
+    }, true);
+
     // Close dropdowns
     document.addEventListener('click', (e) => {
-        if (!e.target.closest('.dropdown-wrapper') && !e.target.closest('.dropdown-toggle')) {
-            document.querySelectorAll('.dropdown-menu').forEach(d => d.classList.remove('show'));
+        if (!e.target.closest('.dropdown-wrapper') && !e.target.closest('.dropdown-toggle') && !e.target.closest('.dropdown-menu')) {
+            closeFloatingDropdowns();
         }
     });
 
@@ -574,8 +789,20 @@
     }
 
     // 删除兑换码
-    async function deleteCode(code) {
-        if (!confirm(`确定要删除兑换码 ${code} 吗?`)) {
+    function deleteCode(code) {
+        document.getElementById('delete-code-value').value = code;
+        document.getElementById('delete-code-display').value = code;
+        document.getElementById('delete-code-confirm').value = '';
+        showModal('deleteCodeModal');
+    }
+
+    async function handleDeleteCode(event) {
+        event.preventDefault();
+        const code = document.getElementById('delete-code-value').value;
+        const confirmValue = document.getElementById('delete-code-confirm').value.trim();
+
+        if (confirmValue !== code) {
+            showToast('输入的兑换码不匹配，请重新确认', 'error');
             return;
         }
 
@@ -590,6 +817,7 @@
             const result = await response.json();
 
             if (response.ok && result.success) {
+                hideModal('deleteCodeModal');
                 showToast('删除成功', 'success');
                 // 刷新页面
                 setTimeout(() => {
@@ -597,6 +825,113 @@
                 }, 1000);
             } else {
                 showToast(result.error || '删除失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    function renderInvalidCodes(codes) {
+        scannedInvalidCodes = codes || [];
+        const emptyState = document.getElementById('invalidCodesEmptyState');
+        const tableWrapper = document.getElementById('invalidCodesTableWrapper');
+        const tableBody = document.getElementById('invalidCodesTableBody');
+        const countEl = document.getElementById('invalidCodesCount');
+        const selectAll = document.getElementById('selectAllInvalidCodes');
+        const cleanupBar = document.getElementById('invalidCleanupBar');
+        const cleanupSelectedCount = document.getElementById('invalidCleanupSelectedCount');
+
+        if (!tableBody || !emptyState || !tableWrapper || !countEl || !selectAll || !cleanupBar || !cleanupSelectedCount) return;
+
+        tableBody.innerHTML = '';
+        countEl.innerText = scannedInvalidCodes.length;
+        selectAll.checked = false;
+        cleanupBar.style.display = 'none';
+        cleanupSelectedCount.innerText = '0';
+
+        if (!scannedInvalidCodes.length) {
+            emptyState.style.display = 'block';
+            tableWrapper.style.display = 'none';
+            return;
+        }
+
+        emptyState.style.display = 'none';
+        tableWrapper.style.display = 'block';
+
+        scannedInvalidCodes.forEach((item) => {
+            const tr = document.createElement('tr');
+            const teamStatusText = (item.team_statuses || []).map((team) => `#${team.team_id}: ${team.status}`).join('，') || 'Team 已删除';
+            tr.innerHTML = `
+                <td><input type="checkbox" class="invalid-code-checkbox" value="${escapeHtml(item.code)}" style="width: auto; margin: 0;" onchange="updateInvalidCleanupSelection()"></td>
+                <td><code>${escapeHtml(item.code)}</code></td>
+                <td>${escapeHtml(formatDateTime(item.expired_at))}</td>
+                <td>${escapeHtml(item.record_count)}</td>
+                <td>${escapeHtml(teamStatusText)}</td>
+                <td>${escapeHtml(item.reason || '-')}</td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    async function scanInvalidCodes() {
+        try {
+            const response = await fetch('/admin/codes/invalid/scan');
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                renderInvalidCodes(result.codes || []);
+                showModal('invalidCodesModal');
+                if (window.lucide) {
+                    lucide.createIcons();
+                }
+            } else {
+                showToast(result.error || '扫描失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    function toggleSelectAllInvalidCodes(checkbox) {
+        document.querySelectorAll('.invalid-code-checkbox').forEach((item) => {
+            item.checked = checkbox.checked;
+        });
+        updateInvalidCleanupSelection();
+    }
+
+    function updateInvalidCleanupSelection() {
+        const selected = document.querySelectorAll('.invalid-code-checkbox:checked');
+        const cleanupBar = document.getElementById('invalidCleanupBar');
+        const cleanupSelectedCount = document.getElementById('invalidCleanupSelectedCount');
+        if (!cleanupBar || !cleanupSelectedCount) return;
+
+        cleanupSelectedCount.innerText = selected.length;
+        cleanupBar.style.display = selected.length > 0 ? 'flex' : 'none';
+    }
+
+    async function cleanupInvalidCodes() {
+        const selected = Array.from(document.querySelectorAll('.invalid-code-checkbox:checked')).map((item) => item.value);
+        if (!selected.length) {
+            showToast('请先选择需要清理的兑换码', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/codes/invalid/cleanup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ codes: selected })
+            });
+
+            const result = await response.json();
+            if (response.ok && result.success) {
+                hideModal('invalidCodesModal');
+                showToast(result.message || '清理成功', 'success');
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showToast(result.error || '清理失败', 'error');
             }
         } catch (error) {
             showToast('网络错误', 'error');

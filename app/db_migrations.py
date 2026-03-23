@@ -24,6 +24,15 @@ def column_exists(cursor, table_name, column_name):
     return column_name in columns
 
 
+def table_exists(cursor, table_name):
+    """检查表是否存在"""
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,)
+    )
+    return cursor.fetchone() is not None
+
+
 def run_auto_migration():
     """
     自动运行数据库迁移
@@ -127,6 +136,45 @@ def run_auto_migration():
             logger.info("添加 redemption_codes.reusable_by_seat 字段")
             cursor.execute("ALTER TABLE redemption_codes ADD COLUMN reusable_by_seat BOOLEAN DEFAULT 0")
             migrations_applied.append("redemption_codes.reusable_by_seat")
+
+        if not table_exists(cursor, "team_email_mappings"):
+            logger.info("创建 team_email_mappings 表")
+            cursor.execute("""
+                CREATE TABLE team_email_mappings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    team_id INTEGER NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'invited',
+                    source VARCHAR(20) NOT NULL DEFAULT 'sync',
+                    last_seen_at DATETIME,
+                    missing_sync_count INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE CASCADE
+                )
+            """)
+            migrations_applied.append("team_email_mappings")
+
+        if table_exists(cursor, "team_email_mappings") and not column_exists(cursor, "team_email_mappings", "missing_sync_count"):
+            logger.info("添加 team_email_mappings.missing_sync_count 字段")
+            cursor.execute("""
+                ALTER TABLE team_email_mappings
+                ADD COLUMN missing_sync_count INTEGER NOT NULL DEFAULT 0
+            """)
+            migrations_applied.append("team_email_mappings.missing_sync_count")
+
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_team_email_unique
+            ON team_email_mappings (team_id, email)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_team_email_email
+            ON team_email_mappings (email)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_team_email_status
+            ON team_email_mappings (team_id, status)
+        """)
 
         # 提交更改
         conn.commit()

@@ -170,7 +170,6 @@ body.admin-theme .main-content,
 body.admin-theme .content-section,
 body.admin-theme .table-container,
 body.admin-theme .modal,
-body.admin-theme .dropdown-menu,
 body.admin-theme .footer,
 body.admin-theme .page-header {
     position: relative;
@@ -198,6 +197,11 @@ body.modal-open .sidebar-overlay {
 
 body.modal-open .modal-overlay.show {
     z-index: 2000;
+}
+
+body.admin-theme .dropdown-menu {
+    position: absolute;
+    z-index: 100;
 }
 
 body.admin-theme .menu-item a:hover,
@@ -650,6 +654,7 @@ body.admin-theme .toast {
 .dropdown-menu.show {
     display: block;
 }
+
 
 .dropdown-header {
     padding: 0.5rem 0.75rem;
@@ -1273,7 +1278,8 @@ body.admin-theme .toast {
 /* Toast */
 .toast {
     position: fixed;
-    right: 1rem;
+    right: max(1rem, env(safe-area-inset-right, 0px));
+    top: auto;
     bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     width: min(420px, calc(100vw - 2rem));
     min-height: 72px;
@@ -1281,19 +1287,29 @@ body.admin-theme .toast {
     background: var(--bg-surface);
     color: var(--text-main);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
     display: flex;
     align-items: flex-start;
     gap: 0.85rem;
-    transform: translateY(calc(100% + 20px));
+    --toast-offset: calc(100% + 20px);
+    transform: translate3d(0, var(--toast-offset), 0);
     opacity: 0;
     transition: transform var(--transition-base), opacity var(--transition-fast);
-    z-index: 1200;
+    z-index: 10000;
     border: 1px solid var(--border-base);
+    pointer-events: none;
+    isolation: isolate;
+}
+
+.toast.toast-over-modal {
+    background: color-mix(in srgb, var(--toast-bg) 96%, var(--bg-surface) 4%);
+    color: var(--text-main);
+    border-color: color-mix(in srgb, var(--toast-border) 85%, var(--border-base) 15%);
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.34);
 }
 
 .toast.show {
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
     opacity: 1;
 }
 

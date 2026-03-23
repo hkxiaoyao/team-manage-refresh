@@ -12,7 +12,7 @@ from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.dependencies.auth import require_admin
 from app.services.team import TeamService
 from app.services.redemption import RedemptionService
@@ -123,6 +123,11 @@ class BulkCodeUpdateRequest(BaseModel):
     warranty_days: Optional[int] = Field(None, description="质保天数")
 
 
+class InvalidCodeCleanupRequest(BaseModel):
+    """无效兑换码清理请求"""
+    codes: List[str] = Field(..., description="待清理的无效兑换码列表")
+
+
 class BulkActionRequest(BaseModel):
     """批量操作请求"""
     ids: List[int] = Field(..., description="Team ID 列表")
@@ -222,7 +227,7 @@ async def welfare_dashboard(
         welfare_usage = await redemption_service.get_virtual_welfare_code_usage(db)
         welfare_code = str(welfare_usage.get("welfare_code") or "")
         welfare_used = int(welfare_usage.get("used_count") or 0)
-        effective_limit = max(int(welfare_usage.get("usable_capacity") or 0), 0)
+        effective_limit = max(int(welfare_usage.get("remaining_count") or 0), 0)
 
         stats = {
             "total_teams": team_stats["total"],
@@ -231,7 +236,7 @@ async def welfare_dashboard(
             "welfare_code": welfare_code,
             "welfare_code_limit": effective_limit,
             "welfare_code_used": welfare_used,
-            "welfare_code_remaining": max(effective_limit - welfare_used, 0),
+            "welfare_code_remaining": effective_limit,
         }
 
         return templates.TemplateResponse(
@@ -320,6 +325,8 @@ async def generate_welfare_common_code(
             "welfare_common_code_used_count": "0",
             "welfare_common_code_generated_at": get_now().isoformat()
         })
+        await redemption_service.ensure_virtual_welfare_shadow_code(db, code)
+        await db.commit()
 
         return JSONResponse(content={"success": True, "code": code, "limit": total_seats, "used": 0, "remaining": total_seats})
     except Exception as e:
@@ -1010,38 +1017,75 @@ async def batch_push_teams_to_cliproxyapi(
 @router.post("/teams/batch-refresh")
 async def batch_refresh_teams(
     action_data: BulkActionRequest,
-    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
-    """
-    批量刷新 Team 信息
-    """
+    """批量刷新 Team 信息，并以流式方式返回进度。"""
     try:
-        logger.info(f"管理员批量刷新 {len(action_data.ids)} 个 Team")
-        
-        success_count = 0
-        failed_count = 0
-        
-        for team_id in action_data.ids:
-            try:
-                # 注意: 这里使用 sync_team_info, 它会自动处理 Token 刷新和信息同步
-                # force_refresh=True 代表强制同步 API
-                result = await team_service.sync_team_info(team_id, db, force_refresh=True)
-                if result.get("success"):
-                    success_count += 1
-                else:
-                    failed_count += 1
-            except Exception as ex:
-                logger.error(f"批量刷新 Team {team_id} 时出错: {ex}")
-                failed_count += 1
-        
-        return JSONResponse(content={
-            "success": True,
-            "message": f"批量刷新完成: 成功 {success_count}, 失败 {failed_count}",
-            "success_count": success_count,
-            "failed_count": failed_count
-        })
-    except Exception as e:
+        team_ids = [team_id for team_id in action_data.ids if isinstance(team_id, int)]
+        if not team_ids:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "请选择要刷新的 Team"}
+            )
+
+        logger.info(f"管理员批量刷新 {len(team_ids)} 个 Team")
+
+        async def progress_generator():
+            success_count = 0
+            failed_count = 0
+            total = len(team_ids)
+
+            yield json.dumps({
+                "type": "start",
+                "total": total,
+                "success_count": success_count,
+                "failed_count": failed_count,
+            }, ensure_ascii=False) + "\n"
+
+            async with AsyncSessionLocal() as db_session:
+                for index, team_id in enumerate(team_ids, start=1):
+                    item_success = False
+                    item_error = None
+                    item_message = None
+
+                    try:
+                        result = await team_service.sync_team_info(team_id, db_session, force_refresh=True)
+                        item_success = bool(result.get("success"))
+                        item_message = result.get("message")
+                        item_error = result.get("error")
+                    except Exception as ex:
+                        logger.error(f"批量刷新 Team {team_id} 时出错: {ex}")
+                        item_error = str(ex)
+
+                    if item_success:
+                        success_count += 1
+                    else:
+                        failed_count += 1
+
+                    yield json.dumps({
+                        "type": "progress",
+                        "current": index,
+                        "total": total,
+                        "success_count": success_count,
+                        "failed_count": failed_count,
+                        "team_id": team_id,
+                        "last_result": {
+                            "success": item_success,
+                            "message": item_message,
+                            "error": item_error,
+                        }
+                    }, ensure_ascii=False) + "\n"
+
+            yield json.dumps({
+                "type": "finish",
+                "total": total,
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "message": f"批量刷新完成: 成功 {success_count}, 失败 {failed_count}"
+            }, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(progress_generator(), media_type="application/x-ndjson")
+    except Exception:
         logger.exception("批量刷新 Team 失败")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1344,6 +1388,47 @@ async def delete_code(
                 "success": False,
                 "error": "删除失败，请稍后重试"
             }
+        )
+
+
+@router.get("/codes/invalid/scan")
+async def scan_invalid_codes(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """扫描可安全清理的无效兑换码。"""
+    try:
+        result = await redemption_service.get_invalid_code_candidates(db, pool_type="normal")
+        status_code = status.HTTP_200_OK if result["success"] else status.HTTP_400_BAD_REQUEST
+        return JSONResponse(status_code=status_code, content=result)
+    except Exception:
+        logger.exception("扫描无效兑换码失败")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "扫描无效兑换码失败，请稍后重试"}
+        )
+
+
+@router.post("/codes/invalid/cleanup")
+async def cleanup_invalid_codes(
+    cleanup_data: InvalidCodeCleanupRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """批量清理扫描出的无效兑换码。"""
+    try:
+        result = await redemption_service.cleanup_invalid_codes(
+            cleanup_data.codes,
+            db,
+            pool_type="normal"
+        )
+        status_code = status.HTTP_200_OK if result["success"] else status.HTTP_400_BAD_REQUEST
+        return JSONResponse(status_code=status_code, content=result)
+    except Exception:
+        logger.exception("清理无效兑换码失败")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "清理无效兑换码失败，请稍后重试"}
         )
 
 
