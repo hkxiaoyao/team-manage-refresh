@@ -155,6 +155,13 @@ class BulkActionRequest(BaseModel):
     ids: List[int] = Field(..., description="Team ID 列表")
 
 
+class BatchRefreshRequest(BaseModel):
+    """批量刷新请求"""
+    ids: List[int] = Field(default_factory=list, description="Team ID 列表")
+    all_in_pool: bool = Field(False, description="是否刷新当前池全部 Team")
+    pool_type: Optional[Literal["normal", "welfare"]] = Field(None, description="池类型")
+
+
 class BulkTransferPoolRequest(BaseModel):
     """批量转池请求"""
     ids: List[int] = Field(..., description="Team ID 列表")
@@ -1211,19 +1218,51 @@ async def batch_push_teams_to_cliproxyapi(
 
 @router.post("/teams/batch-refresh")
 async def batch_refresh_teams(
-    action_data: BulkActionRequest,
+    action_data: BatchRefreshRequest,
     current_user: dict = Depends(require_admin)
 ):
     """批量刷新 Team 信息，并以流式方式返回进度。"""
     try:
         team_ids = [team_id for team_id in action_data.ids if isinstance(team_id, int)]
+
+        if action_data.all_in_pool and team_ids:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "请勿同时提交 Team 列表和整池检测参数"}
+            )
+
+        if not action_data.all_in_pool and action_data.pool_type:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "仅整池检测时允许指定 Team 池"}
+            )
+
+        if action_data.all_in_pool:
+            if not action_data.pool_type:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"success": False, "error": "请选择要检测的 Team 池"}
+                )
+
+            stmt = select(Team.id).where(Team.pool_type == action_data.pool_type).order_by(Team.created_at.desc())
+            async with AsyncSessionLocal() as db_session:
+                result = await db_session.execute(stmt)
+                team_ids = [team_id for team_id in result.scalars().all() if isinstance(team_id, int)]
+
         if not team_ids:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                content={"success": False, "error": "请选择要刷新的 Team"}
+                content={
+                    "success": False,
+                    "error": "当前池没有可检测的 Team" if action_data.all_in_pool else "请选择要刷新的 Team"
+                }
             )
 
-        logger.info(f"管理员批量刷新 {len(team_ids)} 个 Team")
+        logger.info(
+            "管理员批量刷新 %s 个 Team%s",
+            len(team_ids),
+            f" (pool_type={action_data.pool_type})" if action_data.all_in_pool and action_data.pool_type else "",
+        )
 
         async def progress_generator():
             success_count = 0
@@ -1279,7 +1318,14 @@ async def batch_refresh_teams(
                 "message": f"批量刷新完成: 成功 {success_count}, 失败 {failed_count}"
             }, ensure_ascii=False) + "\n"
 
-        return StreamingResponse(progress_generator(), media_type="application/x-ndjson")
+        return StreamingResponse(
+            progress_generator(),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+            }
+        )
     except Exception:
         logger.exception("批量刷新 Team 失败")
         return JSONResponse(

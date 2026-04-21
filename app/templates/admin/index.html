@@ -691,6 +691,9 @@
             <button type="button" onclick="showModal('importTeamModal')" class="btn btn-primary">
                 <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 导入 Team
             </button>
+            <button type="button" id="btnCheckPoolTeamsLive" class="btn btn-secondary" {% if not stats.total_teams %}disabled{% endif %}>
+                <i data-lucide="activity" style="width: 16px; height: 16px;"></i> 检测 Team 存活
+            </button>
         </div>
     </div>
 
@@ -757,7 +760,7 @@
     </div>
 
     <div id="batchRefreshProgress" class="batch-progress-panel" aria-live="polite" aria-atomic="true">
-        <div class="batch-progress-title">正在刷新中</div>
+        <div id="batchRefreshProgressTitle" class="batch-progress-title">正在刷新中</div>
         <div id="batchRefreshProgressPercent" class="batch-progress-percent">0%</div>
         <div class="batch-progress-bar">
             <div id="batchRefreshProgressBar" class="batch-progress-bar-inner"></div>
@@ -1332,6 +1335,7 @@
         document.getElementById('btnBatchExportJson')?.addEventListener('click', handleBatchExportJson);
         document.getElementById('btnBatchDelete')?.addEventListener('click', handleBatchDelete);
         document.getElementById('btnBatchTransferPool')?.addEventListener('click', handleBatchTransferPool);
+        document.getElementById('btnCheckPoolTeamsLive')?.addEventListener('click', handleCheckPoolTeamsLive);
     });
 
     async function enableDeviceAuth(teamId) {
@@ -1851,6 +1855,9 @@
     });
 
     const dashboardBasePath = "{{ '/admin/welfare' if active_page == 'welfare' else '/admin' }}";
+    const currentPoolType = "{{ 'welfare' if active_page == 'welfare' else 'normal' }}";
+    const currentPoolLabel = currentPoolType === 'welfare' ? '福利池' : '常规池';
+    const totalTeamsInCurrentPool = Number("{{ stats.total_teams or 0 }}") || 0;
 
     function filterByStatus(status) {
         const url = new URL(window.location.href);
@@ -1908,10 +1915,19 @@
     }
 
     function setBatchActionButtonsDisabled(disabled) {
-        ['btnBatchRefresh', 'btnBatchEnableDeviceAuth', 'btnBatchPushCliproxyapi', 'btnBatchExportJson', 'btnBatchDelete', 'btnBatchTransferPool'].forEach(id => {
+        ['btnBatchRefresh', 'btnBatchEnableDeviceAuth', 'btnBatchPushCliproxyapi', 'btnBatchExportJson', 'btnBatchDelete', 'btnBatchTransferPool', 'btnCheckPoolTeamsLive'].forEach(id => {
             const button = document.getElementById(id);
             if (button) button.disabled = disabled;
         });
+    }
+
+    let batchRefreshProgressHideTimer = null;
+
+    function setBatchRefreshProgressTitle(title) {
+        const titleNode = document.getElementById('batchRefreshProgressTitle');
+        if (titleNode) {
+            titleNode.textContent = title;
+        }
     }
 
     function updateBatchRefreshProgress({ current, total, success, failed, text }) {
@@ -1921,21 +1937,33 @@
         if (!barNode || !percentNode || !textNode) return;
 
         const safeTotal = total > 0 ? total : 1;
-        const percent = Math.max(0, Math.min(100, Math.round((current / safeTotal) * 100)));
+        const safeCurrent = Math.max(0, Math.min(current, total));
+        const percent = Math.max(0, Math.min(100, Math.round((safeCurrent / safeTotal) * 100)));
 
         barNode.style.width = `${percent}%`;
-        percentNode.textContent = `${percent}%`;
-        textNode.innerHTML = text || `正在刷新中（<strong>${Math.min(current, total)}</strong> / <strong>${total}</strong>），成功 ${success}，失败 ${failed}。`;
+        percentNode.textContent = `${safeCurrent}/${total}`;
+        textNode.innerHTML = text || `当前进度：<strong>${safeCurrent}</strong>/<strong>${total}</strong>，成功 ${success}，失败 ${failed}。`;
     }
 
     function showBatchRefreshProgress() {
+        if (batchRefreshProgressHideTimer) {
+            window.clearTimeout(batchRefreshProgressHideTimer);
+            batchRefreshProgressHideTimer = null;
+        }
         document.getElementById('batchRefreshProgress')?.classList.add('show');
     }
 
     function hideBatchRefreshProgress(delay = 0) {
         const panel = document.getElementById('batchRefreshProgress');
         if (!panel) return;
-        window.setTimeout(() => panel.classList.remove('show'), delay);
+        if (batchRefreshProgressHideTimer) {
+            window.clearTimeout(batchRefreshProgressHideTimer);
+            batchRefreshProgressHideTimer = null;
+        }
+        batchRefreshProgressHideTimer = window.setTimeout(() => {
+            panel.classList.remove('show');
+            batchRefreshProgressHideTimer = null;
+        }, delay);
     }
 
     async function handleBatchAction(endpoint, actionName, options = {}) {
@@ -1992,28 +2020,39 @@
         }
     }
 
-    async function handleBatchRefresh() {
-        const selectedIds = getSelectedTeamIds();
-
-        if (selectedIds.length === 0) {
-            showToast('请选择要刷新的 Team', 'warning');
+    async function runBatchRefreshTask({
+        requestBody,
+        totalCount,
+        panelTitle,
+        startMessage,
+        emptyMessage,
+        confirmMessage,
+        progressVerb,
+        successVerb,
+        failedMessage,
+        interruptedMessage,
+        completionMessageBuilder,
+    }) {
+        if (totalCount <= 0) {
+            showToast(emptyMessage, 'warning');
             return;
         }
 
-        if (!confirm(`确定要批量刷新选中的 ${selectedIds.length} 个 Team 吗？`)) {
+        if (!confirm(confirmMessage)) {
             return;
         }
 
         showBatchRefreshProgress();
+        setBatchRefreshProgressTitle(panelTitle);
         setBatchActionButtonsDisabled(true);
         updateBatchRefreshProgress({
             current: 0,
-            total: selectedIds.length,
+            total: totalCount,
             success: 0,
             failed: 0,
-            text: `正在刷新中，共 <strong>${selectedIds.length}</strong> 个 Team，请稍候…`
+            text: `${progressVerb}，当前进度：<strong>0</strong>/<strong>${totalCount}</strong>，请稍候…`
         });
-        showToast(`开始批量刷新，共 ${selectedIds.length} 个 Team`, 'info');
+        showToast(startMessage, 'info');
 
         try {
             const response = await fetch('/admin/teams/batch-refresh', {
@@ -2021,11 +2060,11 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ ids: selectedIds })
+                body: JSON.stringify(requestBody)
             });
 
             if (!response.ok || !response.body) {
-                let errorMessage = '批量刷新失败';
+                let errorMessage = failedMessage;
                 try {
                     const errorData = await response.json();
                     errorMessage = errorData.error || errorMessage;
@@ -2056,30 +2095,30 @@
                     if (data.type === 'start') {
                         updateBatchRefreshProgress({
                             current: 0,
-                            total: data.total || selectedIds.length,
+                            total: data.total || totalCount,
                             success: data.success_count || 0,
                             failed: data.failed_count || 0,
-                            text: `正在刷新中，共 <strong>${data.total || selectedIds.length}</strong> 个 Team，请稍候…`
+                            text: `${progressVerb}，当前进度：<strong>0</strong>/<strong>${data.total || totalCount}</strong>，请稍候…`
                         });
                     } else if (data.type === 'progress') {
                         updateBatchRefreshProgress({
                             current: data.current || 0,
-                            total: data.total || selectedIds.length,
+                            total: data.total || totalCount,
                             success: data.success_count || 0,
                             failed: data.failed_count || 0,
-                            text: `正在刷新中（<strong>${data.current || 0}</strong> / <strong>${data.total || selectedIds.length}</strong>），成功 ${data.success_count || 0}，失败 ${data.failed_count || 0}。`
+                            text: `${progressVerb}，当前进度：<strong>${data.current || 0}</strong>/<strong>${data.total || totalCount}</strong>，成功 ${data.success_count || 0}，失败 ${data.failed_count || 0}。`
                         });
                     } else if (data.type === 'finish') {
                         finalResult = data;
                         updateBatchRefreshProgress({
-                            current: data.total || selectedIds.length,
-                            total: data.total || selectedIds.length,
+                            current: data.total || totalCount,
+                            total: data.total || totalCount,
                             success: data.success_count || 0,
                             failed: data.failed_count || 0,
-                            text: `批量刷新完成：成功 <strong>${data.success_count || 0}</strong>，失败 <strong>${data.failed_count || 0}</strong>。页面即将自动刷新。`
+                            text: completionMessageBuilder(data)
                         });
                     } else if (data.type === 'error') {
-                        throw new Error(data.error || '批量刷新失败');
+                        throw new Error(data.error || failedMessage);
                     }
                 }
 
@@ -2089,23 +2128,56 @@
             }
 
             if (!finalResult) {
-                throw new Error('批量刷新连接已中断，未收到完成信号，请检查网络或稍后重试');
+                throw new Error(interruptedMessage);
             }
 
             const successCount = finalResult.success_count || 0;
             const failedCount = finalResult.failed_count || 0;
             showToast(
-                finalResult.message || `批量刷新完成：成功 ${successCount}，失败 ${failedCount}`,
+                finalResult.message || `${successVerb}：成功 ${successCount}，失败 ${failedCount}`,
                 failedCount > 0 ? 'warning' : 'success'
             );
             setTimeout(() => location.reload(), 1500);
         } catch (error) {
             console.error(error);
-            showToast(error.message || '批量刷新失败', 'error');
+            showToast(error.message || failedMessage, 'error');
         } finally {
             setBatchActionButtonsDisabled(false);
             hideBatchRefreshProgress(2500);
         }
+    }
+
+    async function handleBatchRefresh() {
+        const selectedIds = getSelectedTeamIds();
+        await runBatchRefreshTask({
+            requestBody: { ids: selectedIds },
+            totalCount: selectedIds.length,
+            panelTitle: '正在刷新中',
+            startMessage: `开始批量刷新，共 ${selectedIds.length} 个 Team`,
+            emptyMessage: '请选择要刷新的 Team',
+            confirmMessage: `确定要批量刷新选中的 ${selectedIds.length} 个 Team 吗？`,
+            progressVerb: '正在刷新中',
+            successVerb: '批量刷新完成',
+            failedMessage: '批量刷新失败',
+            interruptedMessage: '批量刷新连接已中断，未收到完成信号，请检查网络或稍后重试',
+            completionMessageBuilder: (data) => `批量刷新完成：成功 <strong>${data.success_count || 0}</strong>，失败 <strong>${data.failed_count || 0}</strong>。页面即将自动刷新。`,
+        });
+    }
+
+    async function handleCheckPoolTeamsLive() {
+        await runBatchRefreshTask({
+            requestBody: { all_in_pool: true, pool_type: currentPoolType },
+            totalCount: totalTeamsInCurrentPool,
+            panelTitle: '正在检测 Team 存活',
+            startMessage: `开始检测${currentPoolLabel}全部 Team 存活，共 ${totalTeamsInCurrentPool} 个 Team`,
+            emptyMessage: '当前池没有可检测的 Team',
+            confirmMessage: `确定要检测${currentPoolLabel}全部 ${totalTeamsInCurrentPool} 个 Team 的存活情况吗？\n\n此操作会同步 Team 信息并更新状态，不受当前搜索、筛选和分页影响。`,
+            progressVerb: '正在检测 Team 存活',
+            successVerb: '检测完成',
+            failedMessage: '检测 Team 存活失败',
+            interruptedMessage: '检测 Team 存活连接已中断，未收到完成信号，请检查网络或稍后重试',
+            completionMessageBuilder: (data) => `检测完成：成功 <strong>${data.success_count || 0}</strong>，失败 <strong>${data.failed_count || 0}</strong>。页面即将自动刷新。`,
+        });
     }
 
     function handleBatchDelete() {
