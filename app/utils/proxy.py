@@ -10,6 +10,13 @@ def normalize_proxy_url(proxy: Optional[str]) -> Optional[str]:
         return None
 
     parsed = urlparse(value)
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise ValueError(
+            "代理地址格式错误,应为 http://host:port, https://host:port, socks5://host:port 或 socks5h://host:port"
+        ) from exc
+
     if parsed.scheme not in SUPPORTED_PROXY_SCHEMES or not parsed.netloc or not parsed.hostname:
         raise ValueError(
             "代理地址格式错误,应为 http://host:port, https://host:port, socks5://host:port 或 socks5h://host:port"
@@ -42,7 +49,7 @@ def mask_proxy_url(proxy: Optional[str]) -> str:
     parsed = urlparse(normalized_proxy)
     netloc = parsed.netloc
     if parsed.username is not None:
-        credentials = parsed.username
+        credentials = "***"
         if parsed.password is not None:
             credentials = f"{credentials}:***"
         host = parsed.hostname or ""

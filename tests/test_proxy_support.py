@@ -119,14 +119,18 @@ class ProxyHelperTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             normalize_proxy_url("socks5h://:1080")
 
+    def test_normalize_proxy_url_rejects_invalid_port(self):
+        with self.assertRaises(ValueError):
+            normalize_proxy_url("socks5://127.0.0.1:bad")
+
     def test_build_proxy_helpers_return_none_for_empty_value(self):
         self.assertIsNone(build_httpx_proxy("   "))
         self.assertIsNone(build_curl_cffi_proxies(None))
 
-    def test_mask_proxy_url_hides_password(self):
+    def test_mask_proxy_url_hides_credentials(self):
         self.assertEqual(
             mask_proxy_url("socks5://user:secret@127.0.0.1:1080"),
-            "socks5://user:***@127.0.0.1:1080",
+            "socks5://***:***@127.0.0.1:1080",
         )
 
 
@@ -146,6 +150,17 @@ class AdminProxyValidationTests(AsyncDatabaseTestCase):
         async with self.session_factory() as session:
             response = await update_proxy_config(
                 ProxyConfigRequest(enabled=True, proxy="socks5h://:1080"),
+                db=session,
+                current_user={"username": "admin"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("代理地址格式错误", response.body.decode("utf-8"))
+
+    async def test_update_proxy_config_rejects_proxy_with_invalid_port(self):
+        async with self.session_factory() as session:
+            response = await update_proxy_config(
+                ProxyConfigRequest(enabled=True, proxy="socks5://127.0.0.1:bad"),
                 db=session,
                 current_user={"username": "admin"},
             )
