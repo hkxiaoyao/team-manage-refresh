@@ -51,6 +51,40 @@ class AuthService:
         hashed = bcrypt.hashpw(password_bytes, salt)
         return hashed.decode('utf-8')
 
+    def _verify_password_detailed(self, password: str, hashed_password: str) -> str:
+        """
+        验证密码并返回具体走通的路径。
+
+        返回值:
+            "primary"  —— 使用当前逻辑（含长密码 SHA256 预处理）匹配成功
+            "legacy"   —— 旧版本直接交给 bcrypt 由其截断至 72 字节的行为匹配成功
+            ""         —— 密码错误或校验异常
+        """
+        try:
+            hashed_bytes = hashed_password.encode('utf-8')
+            # 1. 先尝试当前逻辑
+            prepared = self._prepare_for_bcrypt(password)
+            if bcrypt.checkpw(prepared, hashed_bytes):
+                return "primary"
+
+            # 2. 如果密码超过 72 字节，旧版本的 bcrypt(<4.1) 会静默截断到 72 字节，
+            #    因此数据库里可能存在基于截断输入生成的哈希；为保证这些老哈希能被
+            #    自动识别并升级，这里做一次兼容性兜底。
+            #    现代 bcrypt(>=4.1) 会对超长输入直接 raise ValueError，我们手动截断
+            #    到 72 字节来复现旧版本的匹配行为。
+            password_bytes = password.encode('utf-8')
+            if len(password_bytes) > self._BCRYPT_MAX_INPUT_BYTES:
+                truncated = password_bytes[:self._BCRYPT_MAX_INPUT_BYTES]
+                try:
+                    if bcrypt.checkpw(truncated, hashed_bytes):
+                        return "legacy"
+                except ValueError:
+                    pass
+            return ""
+        except Exception as e:
+            logger.error(f"密码验证失败: {e}")
+            return ""
+
     def verify_password(self, password: str, hashed_password: str) -> bool:
         """
         验证密码
@@ -62,13 +96,7 @@ class AuthService:
         Returns:
             是否匹配
         """
-        try:
-            password_bytes = self._prepare_for_bcrypt(password)
-            hashed_bytes = hashed_password.encode('utf-8')
-            return bcrypt.checkpw(password_bytes, hashed_bytes)
-        except Exception as e:
-            logger.error(f"密码验证失败: {e}")
-            return False
+        return bool(self._verify_password_detailed(password, hashed_password))
 
     async def get_admin_password_hash(self, db_session: AsyncSession) -> Optional[str]:
         """
@@ -209,7 +237,17 @@ class AuthService:
                     }
 
             # 验证密码
-            if self.verify_password(password, password_hash):
+            match_path = self._verify_password_detailed(password, password_hash)
+            if match_path:
+                if match_path == "legacy":
+                    # 旧版本哈希被本次登录识别出来了，借这次成功登录顺手
+                    # 升级到新的 SHA256 预处理哈希；失败也不影响本次登录。
+                    try:
+                        new_hash = self.hash_password(password)
+                        await self.set_admin_password_hash(new_hash, db_session)
+                        logger.info("检测到旧版 bcrypt 哈希，已在本次登录成功后升级为新格式")
+                    except Exception as e:
+                        logger.warning(f"升级管理员密码哈希失败（不影响本次登录）: {e}")
                 logger.info("管理员登录成功")
                 return {
                     "success": True,
