@@ -741,57 +741,8 @@ class RedemptionService:
             redemption_code = result.scalar_one_or_none()
 
             if not redemption_code:
-                # 兼容福利通用兑换码：只存 settings，不写 redemption_codes 表
-                if welfare_code and code == welfare_code:
-                    welfare_usage = await self.get_virtual_welfare_code_usage(db_session, welfare_code=welfare_code)
-                    used_count = int(welfare_usage["used_count"] or 0)
-                    configured_limit = int(welfare_usage["configured_limit"] or 0)
-                    remaining_count = int(welfare_usage["remaining_count"] or 0)
-
-                    source_team_id = self._safe_int(welfare_usage.get("team_id"), 0)
-                    if source_team_id <= 0:
-                        return {
-                            "success": True,
-                            "valid": False,
-                            "reason": "福利通用兑换码未绑定有效 Team，请联系管理员重新生成",
-                            "redemption_code": None,
-                            "error": None
-                        }
-
-                    if configured_limit <= 0 or remaining_count <= 0:
-                        return {
-                            "success": True,
-                            "valid": False,
-                            "reason": "兑换码次数已用完，无法进行兑换",
-                            "redemption_code": None,
-                            "error": None
-                        }
-
-                    return {
-                        "success": True,
-                        "valid": True,
-                        "reason": "兑换码有效",
-                        "redemption_code": {
-                            "id": None,
-                            "code": code,
-                            "status": "virtual_welfare",
-                            "expires_at": None,
-                            "created_at": None,
-                            "has_warranty": False,
-                            "warranty_days": 0,
-                            "pool_type": "welfare",
-                            "reusable_by_seat": True,
-                            "virtual_welfare_code": True,
-                            "limit": configured_limit,
-                            "used_count": used_count,
-                            "remaining": remaining_count,
-                            "team_id": source_team_id,
-                            "team_name": welfare_usage.get("team_name"),
-                            "team_email": welfare_usage.get("team_email"),
-                        },
-                        "error": None
-                    }
-
+                # 说明：福利通用兑换码已在函数顶部通过 settings 分支提前返回，
+                # 走到这里必然是"非福利码"，无需再做一次重复检查。
                 return {
                     "success": True,
                     "valid": False,
@@ -1322,6 +1273,11 @@ class RedemptionService:
             )
             record_count = int(record_count_result.scalar() or 0)
             if record_count > 0:
+                # 即便拒绝删除，也应把状态同步结果落盘，否则每次查询都要重算。
+                try:
+                    await db_session.commit()
+                except Exception:
+                    await db_session.rollback()
                 return {
                     "success": False,
                     "message": None,

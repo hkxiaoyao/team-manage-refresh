@@ -316,14 +316,13 @@ class TeamService:
                 logger.error(f"Team {team.id} 连续错误 {team.error_count} 次，标记为 error")
                 team.status = "error"
         
-        # 如果是 Token 过期，尝试立即刷新一次（为下次重试做准备）
-        if is_token_expired:
-            logger.info(f"Team {team.id} Token 过期，尝试后台刷新...")
-            # 注意：此处会根据刷新结果立即修正状态，避免前端仍显示 active
-            refreshed_token = await self.ensure_access_token(team, db_session)
-            if not refreshed_token and team.status != "banned":
-                logger.error(f"Team {team.id} Token 过期且刷新失败，立即标记为 expired")
-                team.status = "expired"
+        # 如果是 Token 过期，标记状态等待后台调度任务去刷新。
+        # 注意：以前这里会同步调用 self.ensure_access_token，而 ensure_access_token 在
+        # 刷新失败时又会回调 _handle_api_error，形成 _handle_api_error ↔ ensure_access_token
+        # 互相递归的风险；这里改为仅更新状态，刷新交给上层（手动刷新接口、调度任务）统一触发。
+        if is_token_expired and team.status not in {"banned", "expired"}:
+            logger.error(f"Team {team.id} Token 过期，标记为 expired 并等待下一次刷新")
+            team.status = "expired"
 
         await db_session.commit()
         return True
@@ -623,24 +622,25 @@ class TeamService:
             有效的 AT Token, 刷新失败返回 None
         """
         current_valid_token: Optional[str] = None
+        access_token: Optional[str] = None
 
         try:
             # 1. 解密当前 Token
             access_token = encryption_service.decrypt_token(team.access_token_encrypted)
             if access_token and not self.jwt_parser.is_token_expired(access_token):
                 current_valid_token = access_token
-            
+
             # 2. 检查是否过期 (如果不强制刷新且未过期，则返回)
             if not force_refresh and current_valid_token:
-                return access_token
-                
+                return current_valid_token
+
             if force_refresh:
                 logger.info(f"Team {team.id} ({team.email}) 强制刷新 Token")
             else:
                 logger.info(f"Team {team.id} ({team.email}) Token 已过期, 尝试刷新")
         except Exception as e:
             logger.error(f"解密或验证 Token 失败: {e}")
-            access_token = None # 可能是解密失败，强制走刷新流程
+            access_token = None  # 可能是解密失败，强制走刷新流程
 
         # 3. 优先使用 refresh_token 刷新（无 ST 场景更稳定）
         if team.refresh_token_encrypted:

@@ -28,9 +28,64 @@ logger = logging.getLogger(__name__)
 ALREADY_IN_TEAM_KEYWORDS = ["already in workspace", "already in team", "already a member"]
 
 # 全局兑换锁: 针对 code 进行加锁，防止同一个码并发进入兑换
-_code_locks = defaultdict(asyncio.Lock)
+# 使用引用计数管理，避免 defaultdict 永久持有每个见过的 key
+_code_locks: Dict[Any, asyncio.Lock] = {}
+_code_lock_refs: Dict[Any, int] = {}
+_code_locks_guard = asyncio.Lock()
+
 # 全局 Team 锁: 针对 Team 进行加锁，防止并发拉人导致的人数状态不同步
-_team_locks = defaultdict(asyncio.Lock)
+_team_locks: Dict[Any, asyncio.Lock] = {}
+_team_lock_refs: Dict[Any, int] = {}
+_team_locks_guard = asyncio.Lock()
+
+
+class _KeyedLockManager:
+    """按 key 分配 asyncio.Lock，使用引用计数在无使用者时自动释放。"""
+
+    def __init__(self, locks: Dict[Any, asyncio.Lock], refs: Dict[Any, int], guard: asyncio.Lock):
+        self._locks = locks
+        self._refs = refs
+        self._guard = guard
+
+    def acquire(self, key: Any):
+        return _KeyedLockContext(self, key)
+
+
+class _KeyedLockContext:
+    def __init__(self, manager: _KeyedLockManager, key: Any):
+        self._manager = manager
+        self._key = key
+        self._lock: Optional[asyncio.Lock] = None
+
+    async def __aenter__(self):
+        async with self._manager._guard:
+            lock = self._manager._locks.get(self._key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._manager._locks[self._key] = lock
+            self._manager._refs[self._key] = self._manager._refs.get(self._key, 0) + 1
+            self._lock = lock
+        await self._lock.acquire()
+        return self._lock
+
+    async def __aexit__(self, exc_type, exc, tb):
+        try:
+            self._lock.release()
+        finally:
+            async with self._manager._guard:
+                new_refs = self._manager._refs.get(self._key, 1) - 1
+                if new_refs <= 0:
+                    self._manager._refs.pop(self._key, None)
+                    # 仅当没有其他等待者时才从表中移除，避免删掉别人等待的锁对象
+                    current_lock = self._manager._locks.get(self._key)
+                    if current_lock is self._lock and not self._lock.locked():
+                        self._manager._locks.pop(self._key, None)
+                else:
+                    self._manager._refs[self._key] = new_refs
+
+
+_code_lock_manager = _KeyedLockManager(_code_locks, _code_lock_refs, _code_locks_guard)
+_team_lock_manager = _KeyedLockManager(_team_locks, _team_lock_refs, _team_locks_guard)
 
 
 class RedeemFlowService:
@@ -249,7 +304,7 @@ class RedeemFlowService:
         excluded_team_ids: Set[int] = set()
 
         # 针对 code 加锁，防止同一个码并发进入兑换
-        async with _code_locks[code]:
+        async with _code_lock_manager.acquire(code):
             for attempt in range(max_retries):
                 logger.info(f"兑换尝试 {attempt + 1}/{max_retries} (Code: {code}, Email: {email})")
                 seat_reserved = False
@@ -306,7 +361,7 @@ class RedeemFlowService:
                             current_target_team_id = team_id_final
 
                     # 使用 Team 锁序列化对该账户的操作，防止并发冲突
-                    async with _team_locks[team_id_final]:
+                    async with _team_lock_manager.acquire(team_id_final):
                         logger.info(f"锁定 Team {team_id_final} 执行核心兑换步骤 (尝试 {attempt+1})")
 
                         # 重置 Session 状态，确保没有残留事务（应对上一轮迭代可能的失败）
@@ -601,7 +656,8 @@ class RedeemFlowService:
                                     raise Exception("兑换码次数已用完，无法进行兑换")
 
                                 used_setting.value = str(current_used + 1)
-                                settings_service._cache["welfare_common_code_used_count"] = used_setting.value
+                                # 注意：缓存写入必须等到事务成功 commit 之后再做，
+                                # 否则一旦后续步骤失败 rollback，进程内缓存会被永久污染。
 
                             if is_virtual_welfare_code:
                                 await self.redemption_service.ensure_virtual_welfare_shadow_code(db_session, code)
@@ -626,6 +682,10 @@ class RedeemFlowService:
                             seat_reserved = False
 
                             await db_session.commit()
+
+                            # 事务提交成功后再刷新进程内缓存，防止回滚后缓存与 DB 脱节。
+                            if is_virtual_welfare_code and used_setting is not None:
+                                settings_service._cache["welfare_common_code_used_count"] = used_setting.value
 
                             # 核心步骤成功，准备返回结果
                             success_result = {
