@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     # 安全配置
     secret_key: str = "your-secret-key-here-change-in-production"
     admin_password: str = "admin123"
+    # Cookie 是否仅允许 HTTPS (生产环境应设为 True)
+    session_cookie_secure: bool = False
 
     # 日志配置
     log_level: str = "INFO"

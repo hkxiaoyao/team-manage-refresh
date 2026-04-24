@@ -85,8 +85,10 @@ async def verify_code(
         )
 
         if not result["success"]:
+            # success=False 代表发生了可预期的业务错误（如未找到可用 Team），
+            # 并非服务器内部异常；返回 400 更能反映真实语义，便于前端友好提示。
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail=result["error"]
             )
 

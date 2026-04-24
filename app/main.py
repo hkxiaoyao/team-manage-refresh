@@ -230,11 +230,29 @@ async def lifespan(app: FastAPI):
     启动时初始化数据库，关闭时释放资源
     """
     logger.info("系统正在启动，正在初始化数据库...")
+    # 默认密钥 / 密码使用预警（不强制退出，避免阻断开发环境）
+    if settings.secret_key == "your-secret-key-here-change-in-production":
+        logger.warning(
+            "检测到 secret_key 仍为默认值，请在生产环境通过 SECRET_KEY 环境变量覆盖，"
+            "否则 Session 与 Token 加密都不安全。"
+        )
+    if settings.admin_password == "admin123":
+        logger.warning(
+            "检测到 admin_password 仍为默认值 admin123，请通过 ADMIN_PASSWORD 环境变量修改，"
+            "或首次登录后立即在设置页更新管理员密码。"
+        )
+    if not settings.session_cookie_secure:
+        logger.warning(
+            "session_cookie_secure=False，生产环境（HTTPS）应将其设为 True，"
+            "否则 Session Cookie 可能被明文传输。"
+        )
     try:
-        # 0. 确保数据库目录存在
-        db_file = settings.database_url.split("///")[-1]
-        Path(db_file).parent.mkdir(parents=True, exist_ok=True)
-        
+        # 0. 仅在 sqlite 驱动时才尝试创建数据库目录；非文件型数据库（如 mysql/postgres）没有路径概念。
+        if settings.database_url.startswith("sqlite"):
+            db_file = settings.database_url.split("///")[-1]
+            if db_file:
+                Path(db_file).parent.mkdir(parents=True, exist_ok=True)
+
         # 1. 创建数据库表
         await init_db()
         
@@ -306,7 +324,7 @@ app.add_middleware(
     session_cookie="session",
     max_age=14 * 24 * 60 * 60,  # 14 天
     same_site="lax",
-    https_only=False  # 开发环境设为 False，生产环境应设为 True
+    https_only=settings.session_cookie_secure,
 )
 
 # 配置静态文件
@@ -341,10 +359,26 @@ def format_datetime(dt):
     return dt.strftime("%Y-%m-%d %H:%M")
 
 def escape_js(value):
-    """转义字符串用于 JavaScript"""
-    if not value:
-        return ""
-    return value.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
+    """转义字符串用于嵌入到 HTML 内 <script> 块中的 JS 字面量。
+
+    直接使用 json.dumps 以同时处理：
+    - 反斜杠 / 引号 / 控制字符
+    - </script> 造成的标签提前闭合（ensure_ascii=True 会把 / 之前的字符转义，
+      再额外把 `<` 和 `>` 转为 unicode 转义，避免 HTML 解析器先于 JS 触发）
+    - U+2028 / U+2029 等 JS 行终止符
+    """
+    import json
+    if value is None:
+        value = ""
+    encoded = json.dumps(str(value), ensure_ascii=True)
+    return (
+        encoded
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
 
 templates.env.filters["format_datetime"] = format_datetime
 templates.env.filters["escape_js"] = escape_js

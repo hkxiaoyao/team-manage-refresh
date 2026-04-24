@@ -21,7 +21,26 @@ logger = logging.getLogger(__name__)
 
 # 全局频率限制字典: {(type, key): last_time}
 # type: 'email' or 'code'
-_query_rate_limit = {}
+_query_rate_limit: Dict[Any, datetime] = {}
+_QUERY_RATE_LIMIT_WINDOW_SECONDS = 30
+_QUERY_RATE_LIMIT_MAX_ENTRIES = 10000
+
+
+def _prune_query_rate_limit(now: datetime) -> None:
+    """清理过期或超量的频率限制条目，避免无界内存增长。"""
+    expired_keys = [
+        key for key, ts in _query_rate_limit.items()
+        if (now - ts).total_seconds() >= _QUERY_RATE_LIMIT_WINDOW_SECONDS
+    ]
+    for key in expired_keys:
+        _query_rate_limit.pop(key, None)
+
+    if len(_query_rate_limit) > _QUERY_RATE_LIMIT_MAX_ENTRIES:
+        # 超额时按时间戳先进先出地裁剪
+        oldest = sorted(_query_rate_limit.items(), key=lambda kv: kv[1])
+        overflow = len(_query_rate_limit) - _QUERY_RATE_LIMIT_MAX_ENTRIES
+        for key, _ in oldest[:overflow]:
+            _query_rate_limit.pop(key, None)
 
 
 class WarrantyService:
@@ -117,10 +136,11 @@ class WarrantyService:
 
             # 0. 频率限制 (每个邮箱或每个码 30 秒只能查一次)
             now = datetime.now()
+            _prune_query_rate_limit(now)
             limit_key = ("email", email) if email else ("code", code)
             last_time = _query_rate_limit.get(limit_key)
-            if last_time and (now - last_time).total_seconds() < 30:
-                wait_time = int(30 - (now - last_time).total_seconds())
+            if last_time and (now - last_time).total_seconds() < _QUERY_RATE_LIMIT_WINDOW_SECONDS:
+                wait_time = int(_QUERY_RATE_LIMIT_WINDOW_SECONDS - (now - last_time).total_seconds())
                 return {
                     "success": False,
                     "error": f"查询太频繁,请 {wait_time} 秒后再试"

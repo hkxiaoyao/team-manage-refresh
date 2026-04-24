@@ -3,7 +3,9 @@
 处理管理员登录和登出
 """
 import logging
-from typing import Optional
+import time
+from threading import Lock
+from typing import Dict, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -14,6 +16,53 @@ from app.services.auth import auth_service
 from app.dependencies.auth import get_current_user
 
 logger = logging.getLogger(__name__)
+
+
+# 登录失败节流：同一来源 IP 在 15 分钟内最多允许 10 次失败登录尝试。
+# 仅为反暴力破解兜底，不替代密码强度/审计策略。
+_LOGIN_WINDOW_SECONDS = 15 * 60
+_LOGIN_MAX_FAILURES = 10
+_login_failures: Dict[str, Tuple[int, float]] = {}  # ip -> (count, window_start_epoch)
+_login_failures_lock = Lock()
+
+
+def _client_key(request: Request) -> str:
+    """获取客户端标识用于速率限制 (优先 X-Forwarded-For)。"""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client:
+        return request.client.host or "unknown"
+    return "unknown"
+
+
+def _check_login_rate_limit(ip: str) -> Optional[int]:
+    """返回 None 表示允许；返回整数表示需等待的秒数。"""
+    now = time.time()
+    with _login_failures_lock:
+        count, window_start = _login_failures.get(ip, (0, now))
+        if now - window_start >= _LOGIN_WINDOW_SECONDS:
+            # 窗口已过，重置
+            _login_failures.pop(ip, None)
+            return None
+        if count >= _LOGIN_MAX_FAILURES:
+            return int(_LOGIN_WINDOW_SECONDS - (now - window_start))
+        return None
+
+
+def _record_login_failure(ip: str) -> None:
+    now = time.time()
+    with _login_failures_lock:
+        count, window_start = _login_failures.get(ip, (0, now))
+        if now - window_start >= _LOGIN_WINDOW_SECONDS:
+            count = 0
+            window_start = now
+        _login_failures[ip] = (count + 1, window_start)
+
+
+def _clear_login_failures(ip: str) -> None:
+    with _login_failures_lock:
+        _login_failures.pop(ip, None)
 
 # 创建路由器
 router = APIRouter(
@@ -73,7 +122,17 @@ async def login(
         登录结果
     """
     try:
-        logger.info("管理员登录请求")
+        ip = _client_key(request)
+        logger.info(f"管理员登录请求 (ip={ip})")
+
+        retry_after = _check_login_rate_limit(ip)
+        if retry_after is not None:
+            logger.warning(f"登录速率限制触发: ip={ip}, 需等待 {retry_after}s")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"登录失败次数过多，请 {max(retry_after, 1)} 秒后再试",
+                headers={"Retry-After": str(max(retry_after, 1))}
+            )
 
         # 验证密码
         result = await auth_service.verify_admin_login(
@@ -82,10 +141,14 @@ async def login(
         )
 
         if not result["success"]:
+            _record_login_failure(ip)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=result["error"]
             )
+
+        # 登录成功，清理失败计数
+        _clear_login_failures(ip)
 
         # 设置 Session
         request.session["user"] = {

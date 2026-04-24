@@ -114,8 +114,6 @@ async def check_warranty(
 
 class EnableDeviceAuthRequest(BaseModel):
     """开启设备身份验证请求"""
-    code: str
-    email: str
     team_id: int
 
 

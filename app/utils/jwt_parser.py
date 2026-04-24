@@ -174,17 +174,44 @@ class JWTParser:
             "error": None
         }
 
-        # 解析 Token
+        # 解析 Token —— 只解码一次，下面的字段都从 payload 直接读取，避免 5 次重复 decode
         payload = self.decode_token(token)
         if not payload:
             result["error"] = "Token 解析失败"
             return result
 
-        # 提取信息
-        result["email"] = self.extract_email(token)
-        result["user_id"] = self.extract_user_id(token)
-        result["exp_time"] = self.get_expiration_time(token)
-        result["is_expired"] = self.is_token_expired(token)
+        # 提取邮箱
+        try:
+            profile = payload.get("https://api.openai.com/profile", {}) or {}
+            email = profile.get("email") or payload.get("email")
+        except Exception as e:
+            logger.error(f"提取邮箱失败: {e}")
+            email = None
+        result["email"] = email
+
+        # 提取 user_id
+        try:
+            auth_claim = payload.get("https://api.openai.com/auth", {}) or {}
+            result["user_id"] = auth_claim.get("user_id")
+        except Exception as e:
+            logger.error(f"提取 user_id 失败: {e}")
+
+        # 过期时间
+        try:
+            exp_timestamp = payload.get("exp")
+            if exp_timestamp:
+                dt_utc = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
+                target_tz = pytz.timezone(settings.timezone)
+                exp_time = dt_utc.astimezone(target_tz).replace(tzinfo=None)
+                result["exp_time"] = exp_time
+                result["is_expired"] = get_now() > exp_time
+            else:
+                result["exp_time"] = None
+                result["is_expired"] = True
+        except Exception as e:
+            logger.error(f"获取过期时间失败: {e}")
+            result["exp_time"] = None
+            result["is_expired"] = True
 
         # 验证必要字段
         if not result["email"]:

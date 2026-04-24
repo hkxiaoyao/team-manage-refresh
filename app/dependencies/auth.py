@@ -2,6 +2,7 @@
 认证依赖
 用于保护需要认证的路由
 """
+import hmac
 import logging
 from fastapi import Request, HTTPException, status
 from fastapi.responses import RedirectResponse
@@ -53,7 +54,7 @@ async def require_admin(request: Request) -> dict:
         
         async with AsyncSessionLocal() as db:
             api_key = await settings_service.get_setting(db, "api_key")
-            if api_key and api_key_header == api_key:
+            if api_key and hmac.compare_digest(str(api_key_header), str(api_key)):
                 return {"username": "api_user", "is_admin": True}
 
     # 3. 都没有权限
