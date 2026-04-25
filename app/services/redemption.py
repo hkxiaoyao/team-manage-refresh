@@ -340,6 +340,10 @@ class RedemptionService:
                     )
                 stale_request.code = None
 
+        # session 是 autoflush=False，必须显式 flush 把 code=NULL 落到 DB，
+        # 否则 SQLite FK ON 时下面 delete(RedemptionCode) 会因子行还引用父行而失败。
+        await db_session.flush()
+
         await db_session.execute(
             delete(RedemptionRecord).where(RedemptionRecord.code.in_(normalized_codes))
         )
