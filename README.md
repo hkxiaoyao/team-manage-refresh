@@ -61,13 +61,20 @@
   </tr>
   <tr>
     <td align="center" width="50%">
+      <img src="docs/images/renewal-requests.png" alt="续期申请工作台" /><br/>
+      <sub><b>续期申请工作台 · 一键续期 / 忽略 / 状态筛选</b></sub>
+    </td>
+    <td align="center" width="50%">
       <img src="docs/images/settings.png" alt="系统中心" /><br/>
       <sub><b>系统中心 · 代理 / 自动化 / 外部推送</b></sub>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="50%">
       <img src="docs/images/login.png" alt="管理员登录" /><br/>
       <sub><b>管理员登录</b></sub>
     </td>
+    <td align="center" width="50%"></td>
   </tr>
 </table>
 
