@@ -19,6 +19,7 @@ from app.database import AsyncSessionLocal, get_db
 from app.dependencies.auth import require_admin
 from app.services.team import TeamService
 from app.services.redemption import RedemptionService
+from app.services.warranty import warranty_service
 from app.services.chatgpt import chatgpt_service
 from app.services.settings import (
     settings_service,
