@@ -507,6 +507,41 @@ class WarrantyAutoKickTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(stats["skipped"], 0)
             self.assertEqual(stats["failed"], 0)
 
+    async def test_admin_delete_code_cleans_up_pending_renewal_requests(self):
+        """admin 直接删除无记录的兑换码时，需要先清掉关联的续期请求，避免 FK 失败/孤儿。"""
+        from app.services.redemption import RedemptionService
+
+        async with self.session_factory() as session:
+            code = RedemptionCode(
+                code="WARRANTY-DELCODE-001",
+                status="unused",
+                has_warranty=True,
+                warranty_days=30,
+            )
+            renewal = RenewalRequest(
+                email="user@example.com",
+                code="WARRANTY-DELCODE-001",
+                team_id=None,
+                status="pending",
+            )
+            session.add_all([code, renewal])
+            await session.commit()
+            renewal_id = renewal.id
+
+            redemption_service = RedemptionService()
+            result = await redemption_service.delete_code("WARRANTY-DELCODE-001", session)
+            self.assertTrue(result["success"])
+
+            remaining_code = await session.execute(
+                select(RedemptionCode).where(RedemptionCode.code == "WARRANTY-DELCODE-001")
+            )
+            self.assertIsNone(remaining_code.scalar_one_or_none())
+
+            remaining_renewal = await session.execute(
+                select(RenewalRequest).where(RenewalRequest.id == renewal_id)
+            )
+            self.assertIsNone(remaining_renewal.scalar_one_or_none())
+
     async def test_kick_skips_when_team_missing_and_destroys_code(self):
         """Team 已被管理员删除时不应当作 failed，应直接销毁兑换码。"""
         async with self.session_factory() as session:

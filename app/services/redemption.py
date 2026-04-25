@@ -1394,6 +1394,11 @@ class RedemptionService:
                     "error": f"兑换码 {code} 已有 {record_count} 条关联记录，无法直接删除"
                 }
 
+            # 在删除兑换码前先清掉关联的续期请求，避免 FK 约束失败或留下孤儿任务。
+            await db_session.execute(
+                delete(RenewalRequest).where(RenewalRequest.code == code)
+            )
+
             # 删除兑换码
             await db_session.delete(redemption_code)
             await db_session.commit()
