@@ -436,20 +436,14 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
-  align-items: stretch;
+  align-items: end;
 }
 
 .warranty-query-field {
   margin-bottom: 0;
 }
 
-.warranty-query-field .field-wrap,
-.warranty-query-field .form-input {
-  height: 100%;
-}
-
 .warranty-query-btn {
-  align-self: end;
   width: auto;
   min-width: 188px;
   min-height: 48px;
