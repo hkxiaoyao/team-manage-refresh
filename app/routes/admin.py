@@ -2208,6 +2208,8 @@ async def settings_page(
             "warranty_auto_kick_interval_hours": await settings_service.get_setting(db, "warranty_auto_kick_interval_hours", "12"),
             "warranty_renewal_reminder_days": await settings_service.get_setting(db, "warranty_renewal_reminder_days", "7"),
             "auto_kick_usage_period_days": await settings_service.get_setting(db, "auto_kick_usage_period_days", "30"),
+            "auto_kick_unauthorized_enabled": await settings_service.get_setting(db, "auto_kick_unauthorized_enabled", "false"),
+            "auto_kick_unauthorized_enabled_since": await settings_service.get_setting(db, "auto_kick_unauthorized_enabled_since", ""),
             "default_team_max_members": await settings_service.get_setting(db, "default_team_max_members", "6"),
             "cliproxyapi_base_url": await settings_service.get_setting(db, "cliproxyapi_base_url", ""),
             "cliproxyapi_api_key": await settings_service.get_setting(db, "cliproxyapi_api_key", ""),
@@ -2281,6 +2283,13 @@ class WarrantyAutoKickSettingsRequest(BaseModel):
         ge=1,
         le=3650,
         description="无质保兑换码的使用期限（天）；用于自动踢人判定，不影响质保码（质保码按 warranty_days 计算）",
+    )
+    unauthorized_enabled: bool = Field(
+        False,
+        description=(
+            "是否启用'非授权成员清退'：仅清退该开关启用之后新加入、无兑换记录、"
+            "且非后台手工邀请的成员。开启之前已经存在的成员永远豁免。"
+        ),
     )
 
 
@@ -2868,24 +2877,37 @@ async def update_warranty_auto_kick_settings(
     """更新兑换码过期自动踢人设置。"""
     try:
         from app.main import configure_warranty_auto_kick_job
+        from app.utils.time_utils import get_now
 
         logger.info(
-            "管理员更新自动踢人配置: enabled=%s, interval_hours=%s, reminder_days=%s, usage_period_days=%s",
+            "管理员更新自动踢人配置: enabled=%s, interval_hours=%s, reminder_days=%s, usage_period_days=%s, unauthorized_enabled=%s",
             auto_kick_data.enabled,
             auto_kick_data.interval_hours,
             auto_kick_data.renewal_reminder_days,
             auto_kick_data.usage_period_days,
+            auto_kick_data.unauthorized_enabled,
         )
 
-        success = await settings_service.update_settings(
-            db,
-            {
-                "warranty_auto_kick_enabled": str(auto_kick_data.enabled).lower(),
-                "warranty_auto_kick_interval_hours": str(auto_kick_data.interval_hours),
-                "warranty_renewal_reminder_days": str(auto_kick_data.renewal_reminder_days),
-                "auto_kick_usage_period_days": str(auto_kick_data.usage_period_days),
-            }
+        # 处理"非授权成员清退"开关：仅在 false→true 翻转时记录启用时间戳。
+        prev_unauth_raw = await settings_service.get_setting(
+            db, "auto_kick_unauthorized_enabled", "false"
         )
+        prev_unauth = str(prev_unauth_raw).strip().lower() in ("1", "true", "yes", "on")
+        new_unauth = bool(auto_kick_data.unauthorized_enabled)
+
+        settings_to_save = {
+            "warranty_auto_kick_enabled": str(auto_kick_data.enabled).lower(),
+            "warranty_auto_kick_interval_hours": str(auto_kick_data.interval_hours),
+            "warranty_renewal_reminder_days": str(auto_kick_data.renewal_reminder_days),
+            "auto_kick_usage_period_days": str(auto_kick_data.usage_period_days),
+            "auto_kick_unauthorized_enabled": str(new_unauth).lower(),
+        }
+
+        # 关→开：写入新的启用时间戳；其它情形（保持开 / 保持关 / 开→关）不动 since。
+        if new_unauth and not prev_unauth:
+            settings_to_save["auto_kick_unauthorized_enabled_since"] = get_now().isoformat()
+
+        success = await settings_service.update_settings(db, settings_to_save)
         if not success:
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2897,11 +2919,23 @@ async def update_warranty_auto_kick_settings(
             auto_kick_data.interval_hours,
         )
 
-        message = (
-            f"自动踢人配置已保存（每 {applied_interval} 小时检查一次）"
-            if auto_kick_data.enabled
-            else "自动踢人已关闭"
-        )
+        message_parts = []
+        if auto_kick_data.enabled:
+            message_parts.append(f"自动踢人配置已保存（每 {applied_interval} 小时检查一次）")
+        else:
+            message_parts.append("过期自动踢人已关闭")
+        if new_unauth and not prev_unauth:
+            message_parts.append("非授权成员清退已启用，仅清退此后新加入的非授权成员")
+        elif not new_unauth and prev_unauth:
+            message_parts.append("非授权成员清退已关闭")
+        message = "；".join(message_parts)
+
+        enabled_since_value = settings_to_save.get("auto_kick_unauthorized_enabled_since")
+        if enabled_since_value is None:
+            enabled_since_value = await settings_service.get_setting(
+                db, "auto_kick_unauthorized_enabled_since", ""
+            )
+
         return JSONResponse(
             content={
                 "success": True,
@@ -2910,6 +2944,8 @@ async def update_warranty_auto_kick_settings(
                 "interval_hours": applied_interval,
                 "renewal_reminder_days": auto_kick_data.renewal_reminder_days,
                 "usage_period_days": auto_kick_data.usage_period_days,
+                "unauthorized_enabled": new_unauth,
+                "unauthorized_enabled_since": enabled_since_value or None,
             }
         )
     except Exception:

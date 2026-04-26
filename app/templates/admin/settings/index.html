@@ -231,6 +231,23 @@
             <p class="form-help">当质保码剩余天数小于等于该值且用户准备换到新 Team 时，前台会弹出续期提醒。该值随时可调整，但仅在启用自动踢人后实际触发弹窗。无质保码不参与续期，因此不会弹窗提醒。</p>
         </div>
 
+        <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border-color, #e5e7eb);">
+
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="autoKickUnauthorizedEnabled" name="unauthorized_enabled" {% if (auto_kick_unauthorized_enabled or 'false')|lower in ['1','true','yes','on'] %}checked{% endif %}>
+                <span>启用非授权成员清退（清除偷偷拉进来的人）</span>
+            </label>
+            <p class="form-help">
+                开启后，自动踢人任务会同时扫描所有 Team 当前成员，把"<b>开关启用之后</b>"新加入、且**没有兑换码记录**、**不是后台手工邀请**、**不是 Team 自身管理员邮箱**的成员清退。<br>
+                <b>关键安全设计</b>：仅作用于本开关启用之后新加入的成员；本次更新前已经存在的所有成员永久豁免，避免误杀历史手工邀请的成员。<br>
+                后台手工邀请（"Team 成员管理 → 新增成员邮箱"）发出的邀请会自动加入白名单。
+            </p>
+            {% if auto_kick_unauthorized_enabled_since %}
+            <p class="form-help" style="color: var(--accent-color, #2563eb);">当前生效起点：{{ auto_kick_unauthorized_enabled_since }}（仅清退该时间之后新加入的非授权成员）</p>
+            {% endif %}
+        </div>
+
         <p class="form-help">该操作不可恢复，请确认售后流程允许系统自动清退成员并销毁兑换码后再开启。</p>
         <button type="submit" class="btn btn-primary">保存自动踢人配置</button>
     </form>
@@ -628,6 +645,8 @@
         const interval_hours = parseInt(document.getElementById('warrantyAutoKickInterval').value);
         const renewal_reminder_days = parseInt(document.getElementById('warrantyRenewalReminderDays').value);
         const usage_period_days = parseInt(document.getElementById('autoKickUsagePeriodDays').value);
+        const unauthorizedToggle = document.getElementById('autoKickUnauthorizedEnabled');
+        const unauthorized_enabled = !!(unauthorizedToggle && unauthorizedToggle.checked);
 
         if (isNaN(interval_hours) || interval_hours < 1 || interval_hours > 168) {
             showToast('检查间隔必须在 1~168 小时之间', 'error');
@@ -650,7 +669,7 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ enabled, interval_hours, renewal_reminder_days, usage_period_days })
+                body: JSON.stringify({ enabled, interval_hours, renewal_reminder_days, usage_period_days, unauthorized_enabled })
             });
 
             const data = await response.json();

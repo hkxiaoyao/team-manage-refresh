@@ -145,7 +145,7 @@ def run_auto_migration():
         if not table_exists(cursor, "team_email_mappings"):
             logger.info("创建 team_email_mappings 表")
             cursor.execute("""
-                CREATE TABLE team_email_mappings (
+                CREATE TABLE IF NOT EXISTS team_email_mappings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     team_id INTEGER NOT NULL,
                     email VARCHAR(255) NOT NULL,
@@ -153,6 +153,7 @@ def run_auto_migration():
                     source VARCHAR(20) NOT NULL DEFAULT 'sync',
                     last_seen_at DATETIME,
                     missing_sync_count INTEGER NOT NULL DEFAULT 0,
+                    is_admin_invited BOOLEAN NOT NULL DEFAULT 0,
                     created_at DATETIME,
                     updated_at DATETIME,
                     FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE CASCADE
@@ -167,6 +168,14 @@ def run_auto_migration():
                 ADD COLUMN missing_sync_count INTEGER NOT NULL DEFAULT 0
             """)
             migrations_applied.append("team_email_mappings.missing_sync_count")
+
+        if table_exists(cursor, "team_email_mappings") and not column_exists(cursor, "team_email_mappings", "is_admin_invited"):
+            logger.info("添加 team_email_mappings.is_admin_invited 字段")
+            cursor.execute("""
+                ALTER TABLE team_email_mappings
+                ADD COLUMN is_admin_invited BOOLEAN NOT NULL DEFAULT 0
+            """)
+            migrations_applied.append("team_email_mappings.is_admin_invited")
 
         cursor.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_team_email_unique

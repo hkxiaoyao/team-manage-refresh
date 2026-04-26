@@ -10,7 +10,7 @@ from sqlalchemy import select, and_, or_, delete, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import RedemptionCode, RedemptionRecord, RenewalRequest, Team
+from app.models import RedemptionCode, RedemptionRecord, RenewalRequest, Team, TeamEmailMapping
 from app.services.settings import (
     settings_service,
     WARRANTY_EXPIRATION_MODE_REFRESH_ON_REDEEM,
@@ -1136,6 +1136,316 @@ class WarrantyService:
             "dismissed_renewal_requests": dismissed_renewal_requests,
             "error": None if failed == 0 else "部分过期兑换码处理失败",
             "results": results,
+        }
+
+    async def scan_unauthorized_team_members(
+        self,
+        db_session: AsyncSession,
+    ) -> Dict[str, Any]:
+        """扫描所有 Team 中的"非授权成员"。
+
+        定义为：仍处于 invited / joined 状态的 TeamEmailMapping，且全部满足：
+        - ``mapping.created_at >= auto_kick_unauthorized_enabled_since``：仅在
+          开关启用之后新加入的成员才参与扫描，避免误杀历史已存在的成员；
+        - 邮箱不是该 Team 的管理员邮箱（``team.email``）；
+        - 该映射 ``is_admin_invited`` 不为 True（非后台手工邀请）；
+        - 不存在 (team_id, email) 的 ``RedemptionRecord``（非通过兑换码加入）。
+        """
+        try:
+            enabled = await settings_service.get_setting(
+                db_session, "auto_kick_unauthorized_enabled", "false"
+            )
+            if str(enabled).strip().lower() not in ("1", "true", "yes", "on"):
+                return {
+                    "success": True,
+                    "candidates": [],
+                    "total": 0,
+                    "enabled": False,
+                    "enabled_since": None,
+                    "error": None,
+                }
+
+            since_raw = await settings_service.get_setting(
+                db_session, "auto_kick_unauthorized_enabled_since", ""
+            )
+            enabled_since: Optional[datetime] = None
+            if since_raw:
+                try:
+                    enabled_since = datetime.fromisoformat(str(since_raw).strip())
+                except ValueError:
+                    enabled_since = None
+            if not enabled_since:
+                # 没有有效的启用时间戳时不做任何动作，避免误判存量成员。
+                return {
+                    "success": True,
+                    "candidates": [],
+                    "total": 0,
+                    "enabled": True,
+                    "enabled_since": None,
+                    "error": None,
+                }
+
+            # 1. 拿出所有"开启之后创建"且仍在活跃状态的映射
+            stmt = (
+                select(TeamEmailMapping, Team)
+                .join(Team, Team.id == TeamEmailMapping.team_id)
+                .where(
+                    TeamEmailMapping.status.in_(("invited", "joined")),
+                    TeamEmailMapping.is_admin_invited.is_(False),
+                    TeamEmailMapping.created_at.is_not(None),
+                    TeamEmailMapping.created_at >= enabled_since,
+                )
+                .order_by(TeamEmailMapping.team_id.asc(), TeamEmailMapping.id.asc())
+            )
+            result = await db_session.execute(stmt)
+            rows = result.all()
+
+            if not rows:
+                return {
+                    "success": True,
+                    "candidates": [],
+                    "total": 0,
+                    "enabled": True,
+                    "enabled_since": enabled_since.isoformat(),
+                    "error": None,
+                }
+
+            # 2. 过滤：Team 管理员邮箱 / 有 RedemptionRecord 的成员
+            pairs = [
+                (m.team_id, self.team_service._normalize_member_email(m.email))
+                for m, _ in rows
+            ]
+            unique_emails = sorted({email for _, email in pairs if email})
+
+            redeem_pairs: set = set()
+            if unique_emails:
+                rec_stmt = select(RedemptionRecord.team_id, RedemptionRecord.email).where(
+                    RedemptionRecord.email.in_(unique_emails)
+                )
+                rec_result = await db_session.execute(rec_stmt)
+                redeem_pairs = {
+                    (int(team_id), self.team_service._normalize_member_email(email))
+                    for team_id, email in rec_result.all()
+                    if team_id and email
+                }
+
+            candidates: List[Dict[str, Any]] = []
+            for mapping, team in rows:
+                normalized = self.team_service._normalize_member_email(mapping.email)
+                if not normalized:
+                    continue
+                owner_email = self.team_service._normalize_member_email(team.email)
+                if owner_email and normalized == owner_email:
+                    continue
+                if (mapping.team_id, normalized) in redeem_pairs:
+                    continue
+                candidates.append({
+                    "mapping_id": mapping.id,
+                    "team_id": mapping.team_id,
+                    "email": normalized,
+                    "status": mapping.status,
+                    "source": mapping.source,
+                    "created_at": mapping.created_at.isoformat() if mapping.created_at else None,
+                })
+
+            return {
+                "success": True,
+                "candidates": candidates,
+                "total": len(candidates),
+                "enabled": True,
+                "enabled_since": enabled_since.isoformat(),
+                "error": None,
+            }
+        except Exception as e:
+            logger.exception("扫描非授权成员失败")
+            return {
+                "success": False,
+                "candidates": [],
+                "total": 0,
+                "enabled": None,
+                "enabled_since": None,
+                "error": f"扫描非授权成员失败: {str(e)}",
+            }
+
+    async def kick_unauthorized_team_member(
+        self,
+        db_session: AsyncSession,
+        team_id: int,
+        email: str,
+    ) -> Dict[str, Any]:
+        """对单个非授权成员执行踢人。
+
+        与 ``kick_and_destroy_expired_warranty_code`` 不同：这里**不**销毁任何
+        兑换码或兑换记录（这些成员本来就没有），仅清理 Team 端成员关系并把
+        TeamEmailMapping 标记为 removed (source="auto_kick_unauthorized")。
+        """
+        try:
+            normalized_email = self.team_service._normalize_member_email(email)
+            if not team_id or not normalized_email:
+                return {
+                    "success": False,
+                    "team_id": team_id,
+                    "email": email,
+                    "category": "skipped",
+                    "skip_reason": "invalid_target",
+                    "error": "team_id 或 email 不合法",
+                }
+
+            # 重读 mapping 防止并发情况下 admin 刚刚把它标成白名单。
+            stmt = select(TeamEmailMapping).where(
+                TeamEmailMapping.team_id == team_id,
+                TeamEmailMapping.email == normalized_email,
+            )
+            result = await db_session.execute(stmt)
+            mapping = result.scalar_one_or_none()
+            if not mapping or mapping.status not in ("invited", "joined"):
+                return {
+                    "success": True,
+                    "team_id": team_id,
+                    "email": normalized_email,
+                    "category": "skipped",
+                    "skip_reason": "no_active_mapping",
+                    "error": None,
+                }
+            if mapping.is_admin_invited:
+                return {
+                    "success": True,
+                    "team_id": team_id,
+                    "email": normalized_email,
+                    "category": "skipped",
+                    "skip_reason": "is_admin_invited",
+                    "error": None,
+                }
+
+            # owner 邮箱二次兜底
+            team = await db_session.get(Team, team_id)
+            if team:
+                owner_email = self.team_service._normalize_member_email(team.email)
+                if owner_email and owner_email == normalized_email:
+                    return {
+                        "success": True,
+                        "team_id": team_id,
+                        "email": normalized_email,
+                        "category": "skipped",
+                        "skip_reason": "team_owner",
+                        "error": None,
+                    }
+
+            # 兑换记录二次兜底（避免与 redeem 流程并发）
+            rec_stmt = select(func.count(RedemptionRecord.id)).where(
+                RedemptionRecord.team_id == team_id,
+                RedemptionRecord.email == normalized_email,
+            )
+            rec_count = (await db_session.execute(rec_stmt)).scalar() or 0
+            if rec_count > 0:
+                return {
+                    "success": True,
+                    "team_id": team_id,
+                    "email": normalized_email,
+                    "category": "skipped",
+                    "skip_reason": "has_redemption_record",
+                    "error": None,
+                }
+
+            remove_result = await self.team_service.remove_invite_or_member(
+                team_id, normalized_email, db_session
+            )
+            if not remove_result.get("success"):
+                return {
+                    "success": False,
+                    "team_id": team_id,
+                    "email": normalized_email,
+                    "category": "failed",
+                    "error": remove_result.get("error") or "踢出非授权成员失败",
+                }
+
+            await self.team_service.mark_team_email_mapping_removed(
+                team_id=team_id,
+                email=normalized_email,
+                db_session=db_session,
+                source="auto_kick_unauthorized",
+            )
+            await db_session.commit()
+
+            return {
+                "success": True,
+                "team_id": team_id,
+                "email": normalized_email,
+                "category": "kicked",
+                "action": "kicked_unauthorized",
+                "message": remove_result.get("message") or "已清退非授权成员",
+                "error": None,
+            }
+        except Exception as e:
+            logger.exception("清退非授权成员失败")
+            return {
+                "success": False,
+                "team_id": team_id,
+                "email": email,
+                "category": "failed",
+                "error": f"清退非授权成员失败: {str(e)}",
+            }
+
+    async def run_unauthorized_member_auto_kick(
+        self,
+        db_session: AsyncSession,
+    ) -> Dict[str, Any]:
+        """扫描并清退所有 Team 的非授权成员（由总开关控制）。"""
+        scan_result = await self.scan_unauthorized_team_members(db_session)
+        if not scan_result.get("success"):
+            return {
+                "success": False,
+                "enabled": scan_result.get("enabled"),
+                "scanned": 0,
+                "kicked": 0,
+                "skipped": 0,
+                "failed": 0,
+                "results": [],
+                "error": scan_result.get("error") or "扫描失败",
+            }
+        if not scan_result.get("enabled"):
+            return {
+                "success": True,
+                "enabled": False,
+                "scanned": 0,
+                "kicked": 0,
+                "skipped": 0,
+                "failed": 0,
+                "results": [],
+                "error": None,
+            }
+
+        candidates = scan_result.get("candidates", [])
+        results: List[Dict[str, Any]] = []
+        kicked = 0
+        skipped = 0
+        failed = 0
+
+        for candidate in candidates:
+            item_result = await self.kick_unauthorized_team_member(
+                db_session,
+                candidate.get("team_id"),
+                candidate.get("email", ""),
+            )
+            results.append(item_result)
+            category = item_result.get("category")
+            if category == "kicked":
+                kicked += 1
+            elif category == "skipped":
+                skipped += 1
+            else:
+                failed += 1
+
+        return {
+            "success": failed == 0,
+            "enabled": True,
+            "enabled_since": scan_result.get("enabled_since"),
+            "scanned": len(candidates),
+            "kicked": kicked,
+            "skipped": skipped,
+            "failed": failed,
+            "results": results,
+            "error": None if failed == 0 else "部分非授权成员处理失败",
         }
 
     async def validate_warranty_reuse(
