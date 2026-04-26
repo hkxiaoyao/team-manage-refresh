@@ -84,6 +84,16 @@ async def create_default_settings():
                 value="30",
                 description="无质保兑换码的使用期限（天）；自动踢人按该期限判定无质保码是否到期"
             ),
+            Setting(
+                key="auto_kick_unauthorized_enabled",
+                value="false",
+                description="是否启用'非授权成员清退'：清除无兑换码记录、非后台手工邀请的偷拉成员"
+            ),
+            Setting(
+                key="auto_kick_unauthorized_enabled_since",
+                value="",
+                description="非授权成员清退开关首次启用时的时间戳（ISO 8601）；扫描仅作用于此时间之后新加入的成员"
+            ),
         ]
 
         session.add_all(default_settings)

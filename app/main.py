@@ -290,7 +290,7 @@ async def scheduled_periodic_team_status_sync():
 
 
 async def scheduled_warranty_auto_kick():
-    """定时扫描已过保的质保兑换码并自动踢人、销毁兑换码。"""
+    """定时扫描已过期兑换码并自动踢人，并按开关清退非授权成员。"""
     from app.services.warranty import warranty_service
 
     try:
@@ -319,6 +319,32 @@ async def scheduled_warranty_auto_kick():
                 )
     except Exception as e:
         logger.error(f"质保自动踢人任务执行失败: {e}")
+
+    # 紧接着跑一次"非授权成员"清退（仅在开关启用时实际执行扫描）。
+    try:
+        async with AsyncSessionLocal() as session:
+            unauth_stats = await warranty_service.run_unauthorized_member_auto_kick(session)
+            if not unauth_stats.get("enabled"):
+                return
+            if unauth_stats.get("success"):
+                logger.info(
+                    "非授权成员清退完成: scanned=%s kicked=%s skipped=%s failed=%s",
+                    unauth_stats.get("scanned", 0),
+                    unauth_stats.get("kicked", 0),
+                    unauth_stats.get("skipped", 0),
+                    unauth_stats.get("failed", 0),
+                )
+            else:
+                logger.warning(
+                    "非授权成员清退部分失败: scanned=%s kicked=%s skipped=%s failed=%s error=%s",
+                    unauth_stats.get("scanned", 0),
+                    unauth_stats.get("kicked", 0),
+                    unauth_stats.get("skipped", 0),
+                    unauth_stats.get("failed", 0),
+                    unauth_stats.get("error"),
+                )
+    except Exception as e:
+        logger.error(f"非授权成员清退任务执行失败: {e}")
 
 
 @asynccontextmanager

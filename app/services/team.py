@@ -485,9 +485,14 @@ class TeamService:
         status: str,
         db_session: AsyncSession,
         source: str = "sync",
-        seen_at: Optional[datetime] = None
+        seen_at: Optional[datetime] = None,
+        is_admin_invited: Optional[bool] = None,
     ) -> Optional[TeamEmailMapping]:
-        """创建或更新 Team-邮箱映射。"""
+        """创建或更新 Team-邮箱映射。
+
+        ``is_admin_invited`` 仅在显式传 ``True`` 时打标；不传或 ``False`` 时**不会**
+        清掉历史标记，避免后续同步等流程把"后台手工邀请"的白名单标记洗掉。
+        """
         normalized_email = self._normalize_member_email(email)
         if not normalized_email:
             return None
@@ -508,6 +513,7 @@ class TeamService:
                 source=source,
                 last_seen_at=current_time,
                 missing_sync_count=0,
+                is_admin_invited=bool(is_admin_invited) if is_admin_invited else False,
             )
             db_session.add(mapping)
             return mapping
@@ -516,6 +522,8 @@ class TeamService:
         mapping.source = source
         mapping.last_seen_at = current_time
         mapping.missing_sync_count = 0
+        if is_admin_invited:
+            mapping.is_admin_invited = True
         return mapping
 
     async def mark_team_email_mapping_removed(
@@ -2511,9 +2519,21 @@ class TeamService:
 
             await db_session.commit()
 
+            # 6. 标记为"后台手工邀请"白名单成员，自动踢人非授权成员时不会被误杀。
+            # 状态用 invited 兜底，下一轮 sync 会按真实成员关系更新为 joined。
+            await self.upsert_team_email_mapping(
+                team_id=team_id,
+                email=normalized_email,
+                status=TEAM_EMAIL_STATUS_INVITED,
+                db_session=db_session,
+                source="admin_add",
+                is_admin_invited=True,
+            )
+            await db_session.commit()
+
             logger.info(f"添加成员成功: {normalized_email} -> Team {team_id}")
 
-            # 6. 请求成功，重置错误状态
+            # 7. 请求成功，重置错误状态
             await self._reset_error_status(team, db_session)
 
             return {

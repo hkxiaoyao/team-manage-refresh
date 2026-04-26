@@ -1218,6 +1218,241 @@ class WarrantyAutoKickTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(remaining_code.scalar_one_or_none())
 
 
+class UnauthorizedMemberAutoKickTests(unittest.IsolatedAsyncioTestCase):
+    """非授权成员清退：仅清退开关启用之后新加入、无兑换码记录、非后台手工邀请的成员。"""
+
+    async def asyncSetUp(self):
+        settings_service.clear_cache()
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        self.session_factory = async_sessionmaker(
+            self.engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(__import__("sqlalchemy").text("PRAGMA foreign_keys=ON"))
+
+    async def asyncTearDown(self):
+        settings_service.clear_cache()
+        await self.engine.dispose()
+
+    async def _seed_team(self, session, team_id=900):
+        team = Team(
+            id=team_id,
+            email="owner@example.com",
+            access_token_encrypted="token",
+            account_id=f"acct-unauth-{team_id}",
+            team_name="Unauth Team",
+            current_members=1,
+            max_members=10,
+            status="active",
+            pool_type="normal",
+        )
+        session.add(team)
+        await session.commit()
+        return team
+
+    async def test_skip_when_toggle_disabled(self):
+        async with self.session_factory() as session:
+            await self._seed_team(session)
+            session.add(TeamEmailMapping(
+                team_id=900,
+                email="someone@example.com",
+                status="joined",
+                source="sync",
+                is_admin_invited=False,
+                created_at=get_now(),
+                last_seen_at=get_now(),
+            ))
+            session.add(Setting(key="auto_kick_unauthorized_enabled", value="false"))
+            await session.commit()
+
+            service = WarrantyService()
+            scan = await service.scan_unauthorized_team_members(session)
+
+            self.assertTrue(scan["success"])
+            self.assertFalse(scan["enabled"])
+            self.assertEqual(scan["candidates"], [])
+
+    async def test_skip_grandfathered_members_added_before_enabling(self):
+        """开关启用之前已经存在的成员永久豁免（哪怕没有任何兑换记录、也未打 admin 标）。"""
+        async with self.session_factory() as session:
+            await self._seed_team(session)
+
+            cutoff = get_now()
+            old_member = TeamEmailMapping(
+                team_id=900,
+                email="legacy@example.com",
+                status="joined",
+                source="sync",
+                is_admin_invited=False,
+                created_at=cutoff - timedelta(days=10),
+                last_seen_at=cutoff,
+            )
+            session.add(old_member)
+            session.add_all([
+                Setting(key="auto_kick_unauthorized_enabled", value="true"),
+                Setting(
+                    key="auto_kick_unauthorized_enabled_since",
+                    value=cutoff.isoformat(),
+                ),
+            ])
+            await session.commit()
+
+            service = WarrantyService()
+            scan = await service.scan_unauthorized_team_members(session)
+
+            self.assertTrue(scan["success"])
+            self.assertTrue(scan["enabled"])
+            self.assertEqual(scan["candidates"], [])
+
+    async def test_kicks_only_post_cutoff_unauthorized_members(self):
+        """开关启用之后新加入、无兑换记录、非 admin 邀请、非 owner → 唯一会被踢的目标。"""
+        async with self.session_factory() as session:
+            await self._seed_team(session)
+
+            cutoff = get_now() - timedelta(minutes=5)
+            session.add_all([
+                Setting(key="auto_kick_unauthorized_enabled", value="true"),
+                Setting(
+                    key="auto_kick_unauthorized_enabled_since",
+                    value=cutoff.isoformat(),
+                ),
+            ])
+
+            # 1) Team owner email：永久豁免
+            session.add(TeamEmailMapping(
+                team_id=900,
+                email="owner@example.com",
+                status="joined",
+                source="sync",
+                is_admin_invited=False,
+                created_at=cutoff + timedelta(seconds=30),
+                last_seen_at=get_now(),
+            ))
+            # 2) admin 后台邀请：豁免
+            session.add(TeamEmailMapping(
+                team_id=900,
+                email="admin-added@example.com",
+                status="invited",
+                source="admin_add",
+                is_admin_invited=True,
+                created_at=cutoff + timedelta(seconds=30),
+                last_seen_at=get_now(),
+            ))
+            # 3) 兑换码进来：豁免
+            session.add(TeamEmailMapping(
+                team_id=900,
+                email="redeemer@example.com",
+                status="joined",
+                source="redeem",
+                is_admin_invited=False,
+                created_at=cutoff + timedelta(seconds=30),
+                last_seen_at=get_now(),
+            ))
+            session.add(RedemptionCode(
+                code="ANY-CODE",
+                status="used",
+                has_warranty=False,
+                used_by_email="redeemer@example.com",
+                used_team_id=900,
+                used_at=cutoff + timedelta(seconds=30),
+            ))
+            session.add(RedemptionRecord(
+                email="redeemer@example.com",
+                code="ANY-CODE",
+                team_id=900,
+                account_id="acct-unauth-900",
+                redeemed_at=cutoff + timedelta(seconds=30),
+            ))
+            # 4) 偷拉的人（开关后才进来）→ 应被踢
+            session.add(TeamEmailMapping(
+                team_id=900,
+                email="sneak@example.com",
+                status="joined",
+                source="sync",
+                is_admin_invited=False,
+                created_at=cutoff + timedelta(seconds=30),
+                last_seen_at=get_now(),
+            ))
+            await session.commit()
+
+            service = WarrantyService()
+
+            scan = await service.scan_unauthorized_team_members(session)
+            self.assertTrue(scan["success"])
+            self.assertEqual(scan["total"], 1)
+            self.assertEqual(scan["candidates"][0]["email"], "sneak@example.com")
+
+            removed_calls = []
+
+            async def stub_remove(team_id, email, db_session):
+                removed_calls.append((team_id, email))
+                return {"success": True, "message": "ok", "error": None}
+
+            service.team_service.remove_invite_or_member = stub_remove
+
+            stats = await service.run_unauthorized_member_auto_kick(session)
+            self.assertTrue(stats["success"])
+            self.assertEqual(stats["kicked"], 1)
+            self.assertEqual(stats["skipped"], 0)
+            self.assertEqual(stats["failed"], 0)
+            self.assertEqual(removed_calls, [(900, "sneak@example.com")])
+
+            # 验证 sneak 的 mapping 已经标 removed 且 source=auto_kick_unauthorized
+            check = await session.execute(
+                select(TeamEmailMapping).where(
+                    TeamEmailMapping.team_id == 900,
+                    TeamEmailMapping.email == "sneak@example.com",
+                )
+            )
+            mapping = check.scalar_one()
+            self.assertEqual(mapping.status, "removed")
+            self.assertEqual(mapping.source, "auto_kick_unauthorized")
+
+    async def test_admin_invited_flag_survives_sync_overwrite(self):
+        """同步流程不应清掉 is_admin_invited 标记。"""
+        async with self.session_factory() as session:
+            await self._seed_team(session)
+
+            from app.services.team import TeamService
+
+            team_service = TeamService()
+
+            # 模拟 admin 邀请：先打白名单标记
+            await team_service.upsert_team_email_mapping(
+                team_id=900,
+                email="protected@example.com",
+                status="invited",
+                db_session=session,
+                source="admin_add",
+                is_admin_invited=True,
+            )
+            await session.commit()
+
+            # 同步把 protected 当作 joined 写回（应保留 is_admin_invited）
+            await team_service._reconcile_team_email_mappings(
+                team_id=900,
+                joined_emails={"protected@example.com"},
+                invited_emails=set(),
+                db_session=session,
+            )
+            await session.commit()
+
+            check = await session.execute(
+                select(TeamEmailMapping).where(
+                    TeamEmailMapping.team_id == 900,
+                    TeamEmailMapping.email == "protected@example.com",
+                )
+            )
+            mapping = check.scalar_one()
+            self.assertTrue(mapping.is_admin_invited)
+            self.assertEqual(mapping.status, "joined")
+            # source 会被同步流程重置为 sync，但 is_admin_invited 必须保留
+            self.assertEqual(mapping.source, "sync")
+
+
 class TeamServiceBulkInviteTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
