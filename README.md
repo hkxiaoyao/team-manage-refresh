@@ -10,6 +10,7 @@
     <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white">
     <img alt="SQLite" src="https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white">
     <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-success"></a>
+    <a href="https://linux.do"><img alt="LINUX DO" src="https://img.shields.io/badge/LINUX%20DO-Community-FFB300?logo=discourse&logoColor=white"></a>
     <a href="https://github.com/loLollipop/team-manage-refresh/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/loLollipop/team-manage-refresh?style=social"></a>
   </p>
 
@@ -17,7 +18,8 @@
     <a href="#-界面预览"><strong>界面预览</strong></a> ·
     <a href="#-快速开始"><strong>快速开始</strong></a> ·
     <a href="docs/manual.md"><strong>部署与操作手册</strong></a> ·
-    <a href="integration_docs.md"><strong>集成文档</strong></a>
+    <a href="integration_docs.md"><strong>集成文档</strong></a> ·
+    <a href="#-社区--community"><strong>社区</strong></a>
   </p>
 
 </div>
@@ -286,6 +288,16 @@ docker compose up -d --build
 ## 📄 许可证
 
 本仓库采用 [MIT License](LICENSE)，版权声明保留给原始代码作者。在遵守 MIT 许可证的前提下可以自由使用、修改与分发。
+
+## 🔗 社区 / Community
+
+本项目主要在 [LINUX DO](https://linux.do) 社区与佬友们交流、收集反馈。
+
+- LINUX DO 社区主页：<https://linux.do>
+- 作者 LINUX DO 主页：<https://linux.do/u/lollipop/summary>
+- 项目讨论帖（v0.1 首发）：<https://linux.do/t/topic/1756051>
+
+欢迎到讨论帖里反馈使用问题、提交建议，或在仓库提 Issue / PR。
 
 ---
 
