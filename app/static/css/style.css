@@ -5902,22 +5902,49 @@ body.admin-theme.auth-page .auth-brand-name.cartoon-brand-title {
     letter-spacing: -0.3px;
 }
 
-/* 卡通主题下特性卡改单列 + 满宽，避免 4 字标题折行 */
+/* 卡通主题下特性卡：双列两行 + 单行不折 */
 body.admin-theme.auth-page .auth-feature-list {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    max-width: 460px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    max-width: 580px;
 }
 body.admin-theme.auth-page .auth-feature-list li {
     background: var(--ca-surface);
     border: 2.4px solid var(--ca-ink);
     border-radius: 14px;
     box-shadow: 4px 4px 0 var(--ca-ink);
-    padding: 10px 14px;
+    padding: 10px 12px;
     transition: transform 120ms ease, box-shadow 120ms ease;
+    min-width: 0;
 }
-body.admin-theme.auth-page .auth-feature-list li strong {
+body.admin-theme.auth-page .auth-feature-list li > div {
+    min-width: 0;
+}
+body.admin-theme.auth-page .auth-feature-list li strong,
+body.admin-theme.auth-page .auth-feature-list li p {
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+}
+body.admin-theme.auth-page .auth-feature-list li p {
+    font-size: 0.74rem;
+    letter-spacing: -0.2px;
+}
+
+/* 拉近左右两栏，避免空旷 */
+body.admin-theme.auth-page .auth-layout {
+    gap: clamp(1rem, 2vw, 2rem);
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+    align-items: center;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+body.admin-theme.auth-page .auth-hero-inner {
+    max-width: 580px;
+    gap: 1.4rem;
+}
+body.admin-theme.auth-page .auth-card-wrap {
+    justify-content: flex-start;
 }
 body.admin-theme.auth-page .auth-feature-list li:hover {
     transform: translate(-1px, -1px);
