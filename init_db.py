@@ -94,6 +94,21 @@ async def create_default_settings():
                 value="",
                 description="非授权成员清退开关首次启用时的时间戳（ISO 8601）；扫描仅作用于此时间之后新加入的成员"
             ),
+            Setting(
+                key="auto_kick_admin_invited_enabled",
+                value="false",
+                description="是否启用'后台邀请过期踢人'：管理员手工邀请的成员超过期限自动踢出"
+            ),
+            Setting(
+                key="auto_kick_admin_invited_enabled_since",
+                value="",
+                description="后台邀请过期踢人开关首次启用时的时间戳（ISO 8601）；扫描仅作用于此时间之后新发出的邀请"
+            ),
+            Setting(
+                key="auto_kick_admin_invited_period_days",
+                value="30",
+                description="后台邀请成员的使用期限（天）；超过该期限的后台邀请会被自动踢人扫描清退"
+            ),
         ]
 
         session.add_all(default_settings)

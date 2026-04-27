@@ -2210,6 +2210,9 @@ async def settings_page(
             "auto_kick_usage_period_days": await settings_service.get_setting(db, "auto_kick_usage_period_days", "30"),
             "auto_kick_unauthorized_enabled": await settings_service.get_setting(db, "auto_kick_unauthorized_enabled", "false"),
             "auto_kick_unauthorized_enabled_since": await settings_service.get_setting(db, "auto_kick_unauthorized_enabled_since", ""),
+            "auto_kick_admin_invited_enabled": await settings_service.get_setting(db, "auto_kick_admin_invited_enabled", "false"),
+            "auto_kick_admin_invited_enabled_since": await settings_service.get_setting(db, "auto_kick_admin_invited_enabled_since", ""),
+            "auto_kick_admin_invited_period_days": await settings_service.get_setting(db, "auto_kick_admin_invited_period_days", "30"),
             "default_team_max_members": await settings_service.get_setting(db, "default_team_max_members", "6"),
             "cliproxyapi_base_url": await settings_service.get_setting(db, "cliproxyapi_base_url", ""),
             "cliproxyapi_api_key": await settings_service.get_setting(db, "cliproxyapi_api_key", ""),
@@ -2290,6 +2293,19 @@ class WarrantyAutoKickSettingsRequest(BaseModel):
             "是否启用'非授权成员清退'：仅清退该开关启用之后新加入、无兑换记录、"
             "且非后台手工邀请的成员。开启之前已经存在的成员永远豁免。"
         ),
+    )
+    admin_invited_enabled: bool = Field(
+        False,
+        description=(
+            "是否启用'后台邀请成员过期踢人'：仅扫该开关启用之后新发出的后台邀请，"
+            "超过 admin_invited_period_days 天未补发邀请则踢除。开启之前已经邀请的成员永远豁免。"
+        ),
+    )
+    admin_invited_period_days: int = Field(
+        30,
+        ge=1,
+        le=3650,
+        description="后台邀请成员的使用期限（天）；超过该期限未补发邀请则踢除",
     )
 
 
@@ -2880,12 +2896,14 @@ async def update_warranty_auto_kick_settings(
         from app.utils.time_utils import get_now
 
         logger.info(
-            "管理员更新自动踢人配置: enabled=%s, interval_hours=%s, reminder_days=%s, usage_period_days=%s, unauthorized_enabled=%s",
+            "管理员更新自动踢人配置: enabled=%s, interval_hours=%s, reminder_days=%s, usage_period_days=%s, unauthorized_enabled=%s, admin_invited_enabled=%s, admin_invited_period_days=%s",
             auto_kick_data.enabled,
             auto_kick_data.interval_hours,
             auto_kick_data.renewal_reminder_days,
             auto_kick_data.usage_period_days,
             auto_kick_data.unauthorized_enabled,
+            auto_kick_data.admin_invited_enabled,
+            auto_kick_data.admin_invited_period_days,
         )
 
         # 处理"非授权成员清退"开关：仅在 false→true 翻转时记录启用时间戳。
@@ -2895,17 +2913,28 @@ async def update_warranty_auto_kick_settings(
         prev_unauth = str(prev_unauth_raw).strip().lower() in ("1", "true", "yes", "on")
         new_unauth = bool(auto_kick_data.unauthorized_enabled)
 
+        # 处理"后台邀请过期踢人"开关：同样仅在 false→true 翻转时记录启用时间戳。
+        prev_admin_inv_raw = await settings_service.get_setting(
+            db, "auto_kick_admin_invited_enabled", "false"
+        )
+        prev_admin_inv = str(prev_admin_inv_raw).strip().lower() in ("1", "true", "yes", "on")
+        new_admin_inv = bool(auto_kick_data.admin_invited_enabled)
+
         settings_to_save = {
             "warranty_auto_kick_enabled": str(auto_kick_data.enabled).lower(),
             "warranty_auto_kick_interval_hours": str(auto_kick_data.interval_hours),
             "warranty_renewal_reminder_days": str(auto_kick_data.renewal_reminder_days),
             "auto_kick_usage_period_days": str(auto_kick_data.usage_period_days),
             "auto_kick_unauthorized_enabled": str(new_unauth).lower(),
+            "auto_kick_admin_invited_enabled": str(new_admin_inv).lower(),
+            "auto_kick_admin_invited_period_days": str(auto_kick_data.admin_invited_period_days),
         }
 
         # 关→开：写入新的启用时间戳；其它情形（保持开 / 保持关 / 开→关）不动 since。
         if new_unauth and not prev_unauth:
             settings_to_save["auto_kick_unauthorized_enabled_since"] = get_now().isoformat()
+        if new_admin_inv and not prev_admin_inv:
+            settings_to_save["auto_kick_admin_invited_enabled_since"] = get_now().isoformat()
 
         success = await settings_service.update_settings(db, settings_to_save)
         if not success:
@@ -2928,12 +2957,23 @@ async def update_warranty_auto_kick_settings(
             message_parts.append("非授权成员清退已启用，仅清退此后新加入的非授权成员")
         elif not new_unauth and prev_unauth:
             message_parts.append("非授权成员清退已关闭")
+        if new_admin_inv and not prev_admin_inv:
+            message_parts.append(
+                f"后台邀请过期踢人已启用，仅扫此后新发出的邀请，期限 {auto_kick_data.admin_invited_period_days} 天"
+            )
+        elif not new_admin_inv and prev_admin_inv:
+            message_parts.append("后台邀请过期踢人已关闭")
         message = "；".join(message_parts)
 
         enabled_since_value = settings_to_save.get("auto_kick_unauthorized_enabled_since")
         if enabled_since_value is None:
             enabled_since_value = await settings_service.get_setting(
                 db, "auto_kick_unauthorized_enabled_since", ""
+            )
+        admin_inv_since_value = settings_to_save.get("auto_kick_admin_invited_enabled_since")
+        if admin_inv_since_value is None:
+            admin_inv_since_value = await settings_service.get_setting(
+                db, "auto_kick_admin_invited_enabled_since", ""
             )
 
         return JSONResponse(
@@ -2946,6 +2986,9 @@ async def update_warranty_auto_kick_settings(
                 "usage_period_days": auto_kick_data.usage_period_days,
                 "unauthorized_enabled": new_unauth,
                 "unauthorized_enabled_since": enabled_since_value or None,
+                "admin_invited_enabled": new_admin_inv,
+                "admin_invited_enabled_since": admin_inv_since_value or None,
+                "admin_invited_period_days": auto_kick_data.admin_invited_period_days,
             }
         )
     except Exception:
