@@ -2428,8 +2428,16 @@ async def update_admin_profile(
                 content={"success": False, "error": "头像太大，请压缩后再上传"}
             )
 
-        await settings_service.update_setting(db, "admin_nickname", nickname)
-        await settings_service.update_setting(db, "admin_avatar", avatar)
+        # 用 update_settings（复数）单事务写入，避免半成功 + 检查返回值
+        success = await settings_service.update_settings(db, {
+            "admin_nickname": nickname,
+            "admin_avatar": avatar,
+        })
+        if not success:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"success": False, "error": "保存失败，请稍后重试"}
+            )
 
         logger.info(
             "管理员更新个人资料: nickname_len=%s, has_avatar=%s",

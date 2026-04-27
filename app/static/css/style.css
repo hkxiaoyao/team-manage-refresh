@@ -5745,6 +5745,41 @@ body.admin-theme .brand-mark-dot-a { fill: var(--ca-success); }
 body.admin-theme .brand-mark-dot-b { fill: var(--ca-primary); }
 body.admin-theme .brand-mark-dot-c { fill: var(--ca-secondary); }
 
+/* === D 笑脸吉祥物 === */
+body.admin-theme .brand-mark-mascot .bm-face {
+    fill: var(--ca-primary);
+    stroke: var(--ca-ink);
+    stroke-width: 2.8;
+}
+body.admin-theme .brand-mark-mascot .bm-cheek {
+    fill: var(--ca-secondary);
+    stroke: var(--ca-ink);
+    stroke-width: 1.6;
+}
+body.admin-theme .brand-mark-mascot .bm-eye {
+    fill: var(--ca-ink);
+}
+body.admin-theme .brand-mark-mascot .bm-eye-shine {
+    fill: #ffffff;
+}
+body.admin-theme .brand-mark-mascot .bm-mouth {
+    fill: none;
+    stroke: var(--ca-ink);
+    stroke-width: 2.4;
+    stroke-linecap: round;
+}
+
+/* hover 时小笑脸偷偷眨一下 */
+@keyframes bmBlink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(0.15); }
+}
+body.admin-theme .navbar-brand:hover .brand-mark-mascot .bm-eye {
+    transform-origin: center;
+    transform-box: fill-box;
+    animation: bmBlink 2.4s ease-in-out infinite;
+}
+
 /* 角落 spark：小卡通星点 */
 body.admin-theme .brand-mark-spark {
     position: absolute;
