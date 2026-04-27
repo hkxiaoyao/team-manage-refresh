@@ -10,14 +10,65 @@
         <span class="auth-orb auth-orb-3"></span>
     </div>
 
+    <div class="auth-stickers" aria-hidden="true">
+        <span class="auth-sticker auth-sticker-square"></span>
+        <span class="auth-sticker auth-sticker-circle"></span>
+        <span class="auth-sticker auth-sticker-triangle">
+            <svg viewBox="0 0 60 60"><polygon points="30,6 54,52 6,52" fill="currentColor" stroke="#1a1a1a" stroke-width="3" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="auth-sticker auth-sticker-star">
+            <svg viewBox="0 0 60 60"><path d="M30 6 L34 24 L52 24 L37 35 L43 53 L30 42 L17 53 L23 35 L8 24 L26 24 Z" fill="currentColor" stroke="#1a1a1a" stroke-width="3" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="auth-sticker auth-sticker-heart">
+            <svg viewBox="0 0 60 60"><path d="M30 50 C8 36 8 18 20 14 C26 12 30 18 30 22 C30 18 34 12 40 14 C52 18 52 36 30 50 Z" fill="currentColor" stroke="#1a1a1a" stroke-width="3" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="auth-sticker auth-sticker-plus">
+            <svg viewBox="0 0 60 60"><path d="M22 6 H38 V22 H54 V38 H38 V54 H22 V38 H6 V22 H22 Z" fill="currentColor" stroke="#1a1a1a" stroke-width="3" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="auth-sticker auth-sticker-zigzag">
+            <svg viewBox="0 0 110 28" fill="none"><path d="M4 14 L18 4 L32 24 L46 4 L60 24 L74 4 L88 24 L102 14" stroke="#1a1a1a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="auth-sticker auth-sticker-spark">
+            <svg viewBox="0 0 60 60"><path d="M30 4 L34 24 L54 30 L34 36 L30 56 L26 36 L6 30 L26 24 Z" fill="currentColor" stroke="#1a1a1a" stroke-width="3" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="auth-sticker auth-sticker-dot auth-sticker-dot-1"></span>
+        <span class="auth-sticker auth-sticker-dot auth-sticker-dot-2"></span>
+        <span class="auth-sticker auth-sticker-dot auth-sticker-dot-3"></span>
+    </div>
+
+    <button
+        type="button"
+        id="authThemeToggle"
+        class="auth-theme-toggle auth-theme-fab navbar-theme-btn"
+        aria-label="切换主题"
+        title="切换主题"
+    >
+        <i data-lucide="sun" class="theme-icon-sun"></i>
+        <i data-lucide="moon" class="theme-icon-moon"></i>
+    </button>
+
     <div class="auth-layout">
         <section class="auth-hero" aria-hidden="true">
             <div class="auth-hero-inner">
-                <a href="/" class="auth-brand">
-                    <span class="brand-badge">GT</span>
+                <a href="/" class="auth-brand cartoon-brand">
+                    <span class="brand-badge cartoon-brand-mark" aria-hidden="true">
+                        <span class="brand-mark-rotation">
+                            <svg viewBox="0 0 44 44" class="brand-mark-svg brand-mark-mascot">
+                                <circle class="bm-face" cx="22" cy="22" r="15"></circle>
+                                <circle class="bm-cheek" cx="13" cy="26" r="2.4"></circle>
+                                <circle class="bm-cheek" cx="31" cy="26" r="2.4"></circle>
+                                <ellipse class="bm-eye" cx="17" cy="20" rx="1.6" ry="2.3"></ellipse>
+                                <ellipse class="bm-eye" cx="27" cy="20" rx="1.6" ry="2.3"></ellipse>
+                                <ellipse class="bm-eye-shine" cx="16.4" cy="19.2" rx="0.6" ry="0.9"></ellipse>
+                                <ellipse class="bm-eye-shine" cx="26.4" cy="19.2" rx="0.6" ry="0.9"></ellipse>
+                                <path class="bm-mouth" d="M16 27.5 Q22 32 28 27.5"></path>
+                            </svg>
+                        </span>
+                        <span class="brand-mark-spark" aria-hidden="true"></span>
+                    </span>
                     <span class="auth-brand-copy">
-                        <span class="auth-eyebrow">Operations Workspace</span>
-                        <span class="auth-brand-name">GPT Team 管理系统</span>
+                        <span class="auth-eyebrow cartoon-brand-eyebrow">Operations Workspace</span>
+                        <span class="auth-brand-name cartoon-brand-title">GPT Team 管理系统</span>
                     </span>
                 </a>
 
@@ -62,22 +113,26 @@
         <section class="auth-card-wrap">
             <div class="auth-card">
                 <div class="auth-card-head">
-                    <a href="/" class="auth-brand auth-brand-compact">
-                        <span class="brand-badge">GT</span>
+                    <a href="/" class="auth-brand auth-brand-compact cartoon-brand">
+                        <span class="brand-badge cartoon-brand-mark" aria-hidden="true">
+                            <span class="brand-mark-rotation">
+                                <svg viewBox="0 0 44 44" class="brand-mark-svg brand-mark-mascot">
+                                    <circle class="bm-face" cx="22" cy="22" r="15"></circle>
+                                    <circle class="bm-cheek" cx="13" cy="26" r="2.4"></circle>
+                                    <circle class="bm-cheek" cx="31" cy="26" r="2.4"></circle>
+                                    <ellipse class="bm-eye" cx="17" cy="20" rx="1.6" ry="2.3"></ellipse>
+                                    <ellipse class="bm-eye" cx="27" cy="20" rx="1.6" ry="2.3"></ellipse>
+                                    <ellipse class="bm-eye-shine" cx="16.4" cy="19.2" rx="0.6" ry="0.9"></ellipse>
+                                    <ellipse class="bm-eye-shine" cx="26.4" cy="19.2" rx="0.6" ry="0.9"></ellipse>
+                                    <path class="bm-mouth" d="M16 27.5 Q22 32 28 27.5"></path>
+                                </svg>
+                            </span>
+                        </span>
                         <span class="auth-brand-copy">
-                            <span class="auth-eyebrow">Operations Workspace</span>
-                            <span class="auth-brand-name">GPT Team 管理系统</span>
+                            <span class="auth-eyebrow cartoon-brand-eyebrow">Operations Workspace</span>
+                            <span class="auth-brand-name cartoon-brand-title">GPT Team 管理系统</span>
                         </span>
                     </a>
-                    <button
-                        type="button"
-                        id="authThemeToggle"
-                        class="auth-theme-toggle"
-                        aria-label="切换主题"
-                    >
-                        <i data-lucide="palette"></i>
-                        <span class="auth-theme-label">冷调</span>
-                    </button>
                 </div>
 
                 <div class="auth-card-title">
@@ -141,8 +196,6 @@
     const toggle = document.getElementById('authThemeToggle');
     if (!toggle) return;
 
-    const label = toggle.querySelector('.auth-theme-label');
-
     function currentTheme() {
         const t = document.body.dataset.uiTheme;
         if (t === 'warm' || t === 'ocean') return t;
@@ -153,11 +206,6 @@
         return 'ocean';
     }
 
-    function renderLabel(theme) {
-        if (!label) return;
-        label.textContent = theme === 'warm' ? '暖调' : '冷调';
-    }
-
     function applyTheme(theme) {
         const normalized = theme === 'warm' ? 'warm' : 'ocean';
         document.body.classList.remove('theme-ocean', 'theme-warm');
@@ -166,10 +214,7 @@
         document.documentElement.classList.add('theme-' + normalized);
         document.body.dataset.uiTheme = normalized;
         try { localStorage.setItem('ui_theme', normalized); } catch (e) {}
-        renderLabel(normalized);
     }
-
-    renderLabel(currentTheme());
 
     toggle.addEventListener('click', function () {
         const next = currentTheme() === 'warm' ? 'ocean' : 'warm';
