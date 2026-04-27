@@ -5680,3 +5680,136 @@ body.admin-theme .profile-hint {
     }
 }
 /* ================================================================ */
+
+/* ================================================================
+   ████ CARTOON BRAND (左上 logo + 标题) ████
+   - 自定义"团队三圆点"SVG 图标，替换原 "GT" 字母
+   - 卡通方块容器：粗描边 + 偏移阴影 + 微旋转，hover 上浮
+   - 角落红/玫粉 spark dot，呼应卡通贴纸语言
+   - 标题使用 display 字重，eyebrow 改成 chip 标签
+   ================================================================ */
+
+body.admin-theme .navbar-brand.cartoon-brand {
+    gap: 14px;
+}
+
+body.admin-theme .navbar-brand .brand-badge.cartoon-brand-mark {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    background: var(--ca-cream);
+    color: var(--ca-ink);
+    border: var(--ca-border-thick);
+    border-radius: 14px;
+    box-shadow: var(--ca-shadow-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+    transform: rotate(-4deg);
+    transition: transform var(--ca-tx), box-shadow var(--ca-tx);
+}
+
+body.admin-theme .navbar-brand:hover .brand-badge.cartoon-brand-mark {
+    transform: rotate(-4deg) translate(-1px, -2px);
+    box-shadow: var(--ca-shadow-md);
+}
+
+body.admin-theme .navbar-brand:active .brand-badge.cartoon-brand-mark {
+    transform: rotate(-4deg) translate(1px, 1px);
+    box-shadow: 1.5px 1.5px 0 var(--ca-ink);
+}
+
+/* 内部反向旋转，让 SVG 始终保持正向 */
+body.admin-theme .brand-mark-rotation {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    transform: rotate(4deg);
+}
+
+body.admin-theme .brand-mark-svg {
+    width: 32px;
+    height: 32px;
+    overflow: visible;
+}
+
+body.admin-theme .brand-mark-dot {
+    stroke: var(--ca-ink);
+    stroke-width: 2.6;
+}
+
+body.admin-theme .brand-mark-dot-a { fill: var(--ca-success); }
+body.admin-theme .brand-mark-dot-b { fill: var(--ca-primary); }
+body.admin-theme .brand-mark-dot-c { fill: var(--ca-secondary); }
+
+/* 角落 spark：小卡通星点 */
+body.admin-theme .brand-mark-spark {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 16px;
+    height: 16px;
+    background: var(--ca-info);
+    border: 2px solid var(--ca-ink);
+    border-radius: 50%;
+    box-shadow: 1.2px 1.2px 0 var(--ca-ink);
+    transform: rotate(8deg);
+}
+
+body.admin-theme .brand-mark-spark::before {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--ca-cream);
+    border: 1.5px solid var(--ca-ink);
+}
+
+/* eyebrow 改 chip */
+body.admin-theme .navbar-brand .navbar-eyebrow.cartoon-brand-eyebrow {
+    display: inline-flex;
+    align-self: flex-start;
+    padding: 1px 7px;
+    background: var(--ca-primary);
+    color: var(--ca-ink) !important;
+    font-size: 9.5px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border: var(--ca-border-thin);
+    border-radius: 6px;
+    box-shadow: 1px 1px 0 var(--ca-ink);
+    line-height: 1.5;
+}
+
+/* 标题：加重 + 微微下沉 */
+body.admin-theme .navbar-brand .cartoon-brand-title {
+    margin: 4px 0 0;
+    font-size: 1.2rem;
+    font-weight: 900 !important;
+    letter-spacing: -0.02em;
+    color: var(--ca-ink) !important;
+    line-height: 1.1;
+}
+
+@media (max-width: 760px) {
+    body.admin-theme .navbar-brand .brand-badge.cartoon-brand-mark {
+        width: 42px;
+        height: 42px;
+    }
+    body.admin-theme .brand-mark-svg {
+        width: 28px;
+        height: 28px;
+    }
+    body.admin-theme .navbar-brand .cartoon-brand-title {
+        font-size: 1rem;
+    }
+    body.admin-theme .navbar-brand .navbar-eyebrow.cartoon-brand-eyebrow {
+        font-size: 8.5px;
+        padding: 1px 6px;
+    }
+}
+/* ================================================================ */

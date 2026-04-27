@@ -313,9 +313,10 @@ const adminProfileState = {
 
 function adminProfileInitial(nickname) {
     const trimmed = (nickname || '').trim();
-    if (!trimmed) return 'A';
-    const ch = Array.from(trimmed)[0] || 'A';
-    return ch.toUpperCase();
+    if (!trimmed) return '管';
+    const ch = Array.from(trimmed)[0] || '管';
+    // 中文不需要 toUpperCase，避免英文字母 lower 也被吞
+    return /[a-zA-Z]/.test(ch) ? ch.toUpperCase() : ch;
 }
 
 function applyAdminProfileToUI(profile) {

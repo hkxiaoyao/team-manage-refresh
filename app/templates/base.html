@@ -24,7 +24,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260427-cartoon-admin-3">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260427-cartoon-admin-4">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     {% block extra_css %}{% endblock %}
@@ -39,11 +39,20 @@
                 <button class="mobile-menu-toggle" onclick="toggleSidebar()" aria-label="打开导航菜单">
                     <i data-lucide="menu"></i>
                 </button>
-                <a href="/admin" class="navbar-brand">
-                    <span class="brand-badge">GT</span>
+                <a href="/admin" class="navbar-brand cartoon-brand">
+                    <span class="brand-badge cartoon-brand-mark" aria-hidden="true">
+                        <span class="brand-mark-rotation">
+                            <svg viewBox="0 0 44 44" class="brand-mark-svg">
+                                <circle class="brand-mark-dot brand-mark-dot-a" cx="14" cy="26" r="8.5"></circle>
+                                <circle class="brand-mark-dot brand-mark-dot-b" cx="30" cy="26" r="8.5"></circle>
+                                <circle class="brand-mark-dot brand-mark-dot-c" cx="22" cy="14" r="9"></circle>
+                            </svg>
+                        </span>
+                        <span class="brand-mark-spark" aria-hidden="true"></span>
+                    </span>
                     <span class="navbar-brand-copy">
-                        <span class="navbar-eyebrow">Operations Workspace</span>
-                        <h1>GPT Team 管理系统</h1>
+                        <span class="navbar-eyebrow cartoon-brand-eyebrow">Operations Workspace</span>
+                        <h1 class="cartoon-brand-title">GPT Team 管理系统</h1>
                     </span>
                 </a>
             </div>
@@ -85,7 +94,7 @@
                 <div class="navbar-avatar-wrap" id="navbarAvatarWrap">
                     <button type="button" class="navbar-avatar-btn" id="navbarAvatarBtn" aria-label="账号菜单" aria-haspopup="true" aria-expanded="false">
                         <img id="navbarAvatarImg" alt="" {% if not admin_profile.avatar %}hidden{% endif %} src="{{ admin_profile.avatar or '' }}">
-                        <span id="navbarAvatarFallback" class="navbar-avatar-fallback" {% if admin_profile.avatar %}hidden{% endif %}>{{ ((admin_profile.nickname or 'A')[:1] | upper) }}</span>
+                        <span id="navbarAvatarFallback" class="navbar-avatar-fallback" {% if admin_profile.avatar %}hidden{% endif %}>{{ ((admin_profile.nickname or '管')[:1]) }}</span>
                     </button>
                     <div class="navbar-avatar-menu" id="navbarAvatarMenu" hidden>
                         <div class="navbar-avatar-menu-head">
@@ -240,6 +249,7 @@
                 <div class="form-group" style="margin-top: 18px;">
                     <label for="profileNickname">昵称</label>
                     <input type="text" id="profileNickname" class="form-control" maxlength="32" placeholder="管理员">
+                    <p class="profile-hint" style="margin-top: 6px;">留空将默认显示「管理员」</p>
                 </div>
             </div>
             <div class="modal-footer">
@@ -873,7 +883,7 @@ eyJ..."></textarea>
     <div id="toast" class="toast"></div>
 
     <script>window.SYSTEM_UI_THEME = {{ ui_theme|default("ocean")|tojson }};</script>
-    <script src="/static/js/main.js?v=20260427-cartoon-admin-3"></script>
+    <script src="/static/js/main.js?v=20260427-cartoon-admin-4"></script>
     <script>
         lucide.createIcons();
     </script>
