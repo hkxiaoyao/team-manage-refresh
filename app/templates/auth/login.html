@@ -10,6 +10,17 @@
         <span class="auth-orb auth-orb-3"></span>
     </div>
 
+    <button
+        type="button"
+        id="authThemeToggle"
+        class="auth-theme-toggle auth-theme-fab navbar-theme-btn"
+        aria-label="切换主题"
+        title="切换主题"
+    >
+        <i data-lucide="sun" class="theme-icon-sun"></i>
+        <i data-lucide="moon" class="theme-icon-moon"></i>
+    </button>
+
     <div class="auth-layout">
         <section class="auth-hero" aria-hidden="true">
             <div class="auth-hero-inner">
@@ -96,15 +107,6 @@
                             <span class="auth-brand-name cartoon-brand-title">GPT Team 管理系统</span>
                         </span>
                     </a>
-                    <button
-                        type="button"
-                        id="authThemeToggle"
-                        class="auth-theme-toggle"
-                        aria-label="切换主题"
-                    >
-                        <i data-lucide="palette"></i>
-                        <span class="auth-theme-label">冷调</span>
-                    </button>
                 </div>
 
                 <div class="auth-card-title">
@@ -168,8 +170,6 @@
     const toggle = document.getElementById('authThemeToggle');
     if (!toggle) return;
 
-    const label = toggle.querySelector('.auth-theme-label');
-
     function currentTheme() {
         const t = document.body.dataset.uiTheme;
         if (t === 'warm' || t === 'ocean') return t;
@@ -180,11 +180,6 @@
         return 'ocean';
     }
 
-    function renderLabel(theme) {
-        if (!label) return;
-        label.textContent = theme === 'warm' ? '暖调' : '冷调';
-    }
-
     function applyTheme(theme) {
         const normalized = theme === 'warm' ? 'warm' : 'ocean';
         document.body.classList.remove('theme-ocean', 'theme-warm');
@@ -193,10 +188,7 @@
         document.documentElement.classList.add('theme-' + normalized);
         document.body.dataset.uiTheme = normalized;
         try { localStorage.setItem('ui_theme', normalized); } catch (e) {}
-        renderLabel(normalized);
     }
-
-    renderLabel(currentTheme());
 
     toggle.addEventListener('click', function () {
         const next = currentTheme() === 'warm' ? 'ocean' : 'warm';

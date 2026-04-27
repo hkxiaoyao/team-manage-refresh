@@ -6102,3 +6102,78 @@ body.admin-theme.auth-page .auth-layout {
     }
 }
 /* ================================================================ */
+
+/* === 登录页主题切换 FAB（右上角图标按钮） === */
+body.admin-theme.auth-page .auth-theme-toggle.auth-theme-fab {
+    position: fixed;
+    top: 22px;
+    right: 22px;
+    z-index: 30;
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border-radius: 14px;
+    background: var(--ca-info);
+    color: var(--ca-ink);
+    border: 2.6px solid var(--ca-ink);
+    box-shadow: 4px 4px 0 var(--ca-ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+body.admin-theme.auth-page .auth-theme-toggle.auth-theme-fab > i {
+    width: 22px;
+    height: 22px;
+}
+body.admin-theme.auth-page .auth-theme-toggle.auth-theme-fab:hover {
+    transform: translate(-1.5px, -1.5px);
+    box-shadow: 5.5px 5.5px 0 var(--ca-ink);
+}
+body.admin-theme.auth-page .auth-theme-toggle.auth-theme-fab:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1.5px 1.5px 0 var(--ca-ink);
+}
+
+/* 暖 = 太阳，冷 = 月亮（与 navbar 保持一致） */
+body.admin-theme.auth-page.theme-warm .auth-theme-fab { background: var(--ca-primary); }
+body.admin-theme.auth-page.theme-ocean .auth-theme-fab { background: var(--ca-info); }
+
+/* card head：移除主题按钮后只剩 brand —— 桌面隐藏（hero 已有），窄屏居中显示 */
+body.admin-theme.auth-page .auth-card-head {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 8px;
+}
+@media (min-width: 901px) {
+    body.admin-theme.auth-page .auth-card-head { display: none; }
+}
+body.admin-theme.auth-page .auth-card-head .auth-brand.auth-brand-compact {
+    align-items: center;
+    gap: 12px;
+}
+
+/* 卡片整体居中 + 拉宽到 410px，让标题更舒服 */
+@media (min-width: 901px) {
+    body.admin-theme.auth-page .auth-card {
+        width: 100%;
+        max-width: 410px;
+        padding: 32px 32px 26px;
+    }
+    body.admin-theme.auth-page .auth-card-title h1 {
+        font-size: 1.6rem;
+    }
+}
+
+@media (max-width: 760px) {
+    body.admin-theme.auth-page .auth-theme-toggle.auth-theme-fab {
+        top: 14px;
+        right: 14px;
+        width: 42px;
+        height: 42px;
+        box-shadow: 3px 3px 0 var(--ca-ink);
+    }
+    body.admin-theme.auth-page .auth-card-head {
+        margin-bottom: 6px;
+    }
+}
