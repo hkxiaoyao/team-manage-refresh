@@ -254,11 +254,11 @@ async function saveSystemTheme(theme) {
 function updateThemeToggleButton(theme) {
     const openBtn = document.getElementById('openThemeSwitcherBtn');
     if (!openBtn) return;
-    const targetLabel = theme === 'warm' ? '暖调' : '冷调';
-    openBtn.innerHTML = `<i data-lucide="palette" style="width: 15px; height: 15px;"></i> ${targetLabel}`;
-    if (window.lucide) {
-        lucide.createIcons();
-    }
+    // 图标化导航：暖调显示太阳、冷调显示月亮，点击切到对侧
+    const isWarm = theme === 'warm';
+    openBtn.dataset.currentTheme = isWarm ? 'warm' : 'ocean';
+    openBtn.setAttribute('aria-label', isWarm ? '切换为冷调' : '切换为暖调');
+    openBtn.title = isWarm ? '切换为冷调' : '切换为暖调';
 }
 
 async function initThemeSwitcher() {
@@ -297,6 +297,251 @@ async function initThemeSwitcher() {
         }
     });
 }
+
+
+// ============================================================
+// 管理员个人资料：navbar 头像下拉 + 资料弹窗（昵称 + 头像）
+// ============================================================
+const ADMIN_PROFILE_API = '/admin/settings/profile';
+const ADMIN_AVATAR_MAX_BYTES = 1_400_000;
+
+const adminProfileState = {
+    nickname: '',
+    avatar: '',
+    pendingAvatar: null,
+};
+
+function adminProfileInitial(nickname) {
+    const trimmed = (nickname || '').trim();
+    if (!trimmed) return 'A';
+    const ch = Array.from(trimmed)[0] || 'A';
+    return ch.toUpperCase();
+}
+
+function applyAdminProfileToUI(profile) {
+    adminProfileState.nickname = profile.nickname || '';
+    adminProfileState.avatar = profile.avatar || '';
+
+    const navImg = document.getElementById('navbarAvatarImg');
+    const navFallback = document.getElementById('navbarAvatarFallback');
+    if (navImg && navFallback) {
+        if (adminProfileState.avatar) {
+            navImg.src = adminProfileState.avatar;
+            navImg.hidden = false;
+            navFallback.hidden = true;
+        } else {
+            navImg.hidden = true;
+            navImg.removeAttribute('src');
+            navFallback.hidden = false;
+            navFallback.textContent = adminProfileInitial(adminProfileState.nickname);
+        }
+    }
+    const navName = document.getElementById('navbarAvatarName');
+    if (navName) navName.textContent = adminProfileState.nickname || '管理员';
+}
+
+function setupNavbarAvatarMenu() {
+    const wrap = document.getElementById('navbarAvatarWrap');
+    const btn = document.getElementById('navbarAvatarBtn');
+    const menu = document.getElementById('navbarAvatarMenu');
+    if (!wrap || !btn || !menu) return;
+
+    const closeMenu = () => {
+        menu.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+    };
+    const openMenu = () => {
+        menu.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+    };
+    const toggleMenu = (e) => {
+        e.stopPropagation();
+        if (menu.hidden) openMenu(); else closeMenu();
+    };
+
+    btn.addEventListener('click', toggleMenu);
+
+    document.addEventListener('click', (e) => {
+        if (menu.hidden) return;
+        if (wrap.contains(e.target)) return;
+        closeMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !menu.hidden) closeMenu();
+    });
+
+    // 菜单项点击后自动关菜单
+    menu.querySelectorAll('.navbar-avatar-menu-item').forEach((item) => {
+        item.addEventListener('click', () => closeMenu());
+    });
+}
+
+async function fetchAdminProfile() {
+    try {
+        const resp = await fetch(ADMIN_PROFILE_API, { credentials: 'same-origin' });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            applyAdminProfileToUI({ nickname: data.nickname || '', avatar: data.avatar || '' });
+        }
+    } catch (error) {
+        console.warn('加载个人资料失败', error);
+    }
+}
+
+function setProfileModalPreview(dataUrl, nickname) {
+    const img = document.getElementById('profileAvatarPreview');
+    const fallback = document.getElementById('profileAvatarFallback');
+    if (!img || !fallback) return;
+    if (dataUrl) {
+        img.src = dataUrl;
+        img.hidden = false;
+        fallback.hidden = true;
+    } else {
+        img.hidden = true;
+        img.removeAttribute('src');
+        fallback.hidden = false;
+        fallback.textContent = adminProfileInitial(nickname);
+    }
+}
+
+function openProfileModal() {
+    if (typeof showModal !== 'function') return;
+    const nicknameInput = document.getElementById('profileNickname');
+    if (nicknameInput) nicknameInput.value = adminProfileState.nickname || '';
+    adminProfileState.pendingAvatar = null;
+    setProfileModalPreview(adminProfileState.avatar, adminProfileState.nickname);
+    showModal('profileModal');
+}
+
+async function resizeImageToAvatarDataUrl(file, size = 256, quality = 0.86) {
+    const url = URL.createObjectURL(file);
+    try {
+        const img = await new Promise((resolve, reject) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = reject;
+            i.src = url;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        // 从中心做正方形裁切
+        const min = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - min) / 2;
+        const sy = (img.naturalHeight - min) / 2;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, size, size);
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+        // 优先尝试 jpeg 压缩，超阈值时降级
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+        if (dataUrl.length > ADMIN_AVATAR_MAX_BYTES) {
+            dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        }
+        if (dataUrl.length > ADMIN_AVATAR_MAX_BYTES) {
+            // 降到 192x192
+            canvas.width = 192;
+            canvas.height = 192;
+            const ctx2 = canvas.getContext('2d');
+            ctx2.fillStyle = '#ffffff';
+            ctx2.fillRect(0, 0, 192, 192);
+            ctx2.drawImage(img, sx, sy, min, min, 0, 0, 192, 192);
+            dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        }
+        return dataUrl;
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
+function setupProfileModal() {
+    const pickBtn = document.getElementById('profileAvatarPickBtn');
+    const clearBtn = document.getElementById('profileAvatarClearBtn');
+    const fileInput = document.getElementById('profileAvatarInput');
+    const saveBtn = document.getElementById('profileSaveBtn');
+    const nicknameInput = document.getElementById('profileNickname');
+    if (!pickBtn || !clearBtn || !fileInput || !saveBtn || !nicknameInput) return;
+
+    pickBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            showToast('请选择图片文件', 'warning');
+            fileInput.value = '';
+            return;
+        }
+        try {
+            const dataUrl = await resizeImageToAvatarDataUrl(file);
+            adminProfileState.pendingAvatar = dataUrl;
+            setProfileModalPreview(dataUrl, nicknameInput.value);
+        } catch (error) {
+            console.error('压缩头像失败', error);
+            showToast('图片处理失败，请换一张试试', 'error');
+        } finally {
+            fileInput.value = '';
+        }
+    });
+
+    clearBtn.addEventListener('click', () => {
+        adminProfileState.pendingAvatar = '';
+        setProfileModalPreview('', nicknameInput.value);
+    });
+
+    nicknameInput.addEventListener('input', () => {
+        // 实时刷新 fallback 字母
+        const previewImg = document.getElementById('profileAvatarPreview');
+        if (previewImg && previewImg.hidden) {
+            const fallback = document.getElementById('profileAvatarFallback');
+            if (fallback) fallback.textContent = adminProfileInitial(nicknameInput.value);
+        }
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const nickname = (nicknameInput.value || '').trim().slice(0, 32);
+        const avatar = adminProfileState.pendingAvatar !== null
+            ? adminProfileState.pendingAvatar
+            : adminProfileState.avatar;
+        saveBtn.disabled = true;
+        try {
+            const resp = await fetch(ADMIN_PROFILE_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ nickname, avatar }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                throw new Error(data.error || '保存失败');
+            }
+            applyAdminProfileToUI({ nickname: data.nickname || '', avatar: data.avatar || '' });
+            showToast('个人资料已保存', 'success');
+            if (typeof hideModal === 'function') hideModal('profileModal');
+        } catch (error) {
+            showToast(error.message || '保存失败', 'error');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+}
+
+function initAdminProfile() {
+    const isAdmin = !!document.body?.classList.contains('admin-theme');
+    if (!isAdmin) return;
+    setupNavbarAvatarMenu();
+    setupProfileModal();
+    // 用模板已经渲染的初始值刷新一次状态（避免再发一次请求时的闪烁）
+    const navName = document.getElementById('navbarAvatarName');
+    const initialNickname = navName ? (navName.textContent || '').trim() : '';
+    const navImg = document.getElementById('navbarAvatarImg');
+    adminProfileState.nickname = initialNickname === '管理员' ? '' : initialNickname;
+    adminProfileState.avatar = navImg && !navImg.hidden ? (navImg.getAttribute('src') || '') : '';
+    fetchAdminProfile();
+}
+
+// 暴露给 base.html inline onclick
+window.openProfileModal = openProfileModal;
 
 
 // Toast 提示函数
@@ -554,6 +799,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     cleanupLegacyThemeSettingsSection();
     initThemeSwitcher();
+    initAdminProfile();
     mountGlobalOverlayNodes();
     syncResponsiveSidebarMount();
     window.addEventListener('resize', syncResponsiveSidebarMount);

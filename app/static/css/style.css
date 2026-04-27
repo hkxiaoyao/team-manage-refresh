@@ -5387,3 +5387,296 @@ body.admin-theme input[type="date"]::-webkit-calendar-picker-indicator {
     cursor: pointer;
     filter: invert(0.1);
 }
+
+/* ================================================================
+   ████ NAVBAR ICONIFICATION + AVATAR DROPDOWN + PROFILE MODAL ████
+   - 铃铛 + 红点角标
+   - 太阳 / 月亮 主题图标按钮
+   - 头像按钮 + 下拉菜单（个人资料 / 退出登录）
+   - 个人资料弹窗（昵称 + 头像上传）
+   ================================================================ */
+
+/* ----- 通用图标按钮（square 38px 卡通风） ----- */
+body.admin-theme .navbar-icon-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    background: var(--ca-surface);
+    color: var(--ca-ink);
+    border: var(--ca-border);
+    border-radius: var(--ca-r-sm);
+    box-shadow: var(--ca-shadow-xs);
+    cursor: pointer;
+    transition: transform var(--ca-tx), box-shadow var(--ca-tx), background var(--ca-tx);
+}
+
+body.admin-theme .navbar-icon-btn:hover {
+    background: var(--ca-cream);
+    transform: translate(-1px, -1px);
+    box-shadow: var(--ca-shadow-sm);
+}
+
+body.admin-theme .navbar-icon-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0 var(--ca-ink);
+}
+
+body.admin-theme .navbar-icon-btn i {
+    width: 18px;
+    height: 18px;
+    color: var(--ca-ink);
+}
+
+/* 铃铛红点角标 */
+body.admin-theme .navbar-icon-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: var(--ca-secondary);
+    color: var(--ca-ink);
+    border: 2px solid var(--ca-ink);
+    border-radius: var(--ca-r-pill);
+    box-shadow: 1px 1px 0 var(--ca-ink);
+    font-size: 10.5px;
+    font-weight: 800;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+    letter-spacing: 0;
+}
+
+body.admin-theme .navbar-icon-badge[hidden] { display: none !important; }
+
+/* 主题切换：暖调显示太阳，冷调显示月亮，自动切换 */
+body.admin-theme .navbar-theme-btn .theme-icon-sun,
+body.admin-theme .navbar-theme-btn .theme-icon-moon {
+    display: none;
+}
+body.admin-theme.theme-warm .navbar-theme-btn .theme-icon-sun,
+html.theme-warm body.admin-theme .navbar-theme-btn .theme-icon-sun {
+    display: inline-block;
+    color: var(--ca-ink);
+}
+body.admin-theme.theme-ocean .navbar-theme-btn .theme-icon-moon,
+html.theme-ocean body.admin-theme .navbar-theme-btn .theme-icon-moon {
+    display: inline-block;
+    color: var(--ca-ink);
+}
+body.admin-theme.theme-warm .navbar-theme-btn { background: var(--ca-primary); }
+body.admin-theme.theme-ocean .navbar-theme-btn { background: var(--ca-info); }
+
+/* ----- 头像按钮 + 下拉菜单 ----- */
+body.admin-theme .navbar-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+body.admin-theme .navbar-avatar-btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: var(--ca-cream);
+    color: var(--ca-ink);
+    border: var(--ca-border-thick);
+    border-radius: 50%;
+    box-shadow: var(--ca-shadow-xs);
+    cursor: pointer;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform var(--ca-tx), box-shadow var(--ca-tx), background var(--ca-tx);
+}
+
+body.admin-theme .navbar-avatar-btn:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: var(--ca-shadow-sm);
+}
+
+body.admin-theme .navbar-avatar-btn:active {
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0 var(--ca-ink);
+}
+
+body.admin-theme .navbar-avatar-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+body.admin-theme .navbar-avatar-btn img[hidden] { display: none !important; }
+
+body.admin-theme .navbar-avatar-fallback {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--ca-ink);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+body.admin-theme .navbar-avatar-fallback[hidden] { display: none !important; }
+
+/* 下拉菜单 */
+body.admin-theme .navbar-avatar-menu {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 0;
+    min-width: 200px;
+    padding: 8px;
+    background: var(--ca-surface);
+    border: var(--ca-border-thick);
+    border-radius: var(--ca-r-md);
+    box-shadow: var(--ca-shadow-md);
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: navbarAvatarPop 180ms cubic-bezier(.34, 1.56, .64, 1);
+}
+
+body.admin-theme .navbar-avatar-menu[hidden] { display: none !important; }
+
+@keyframes navbarAvatarPop {
+    from { opacity: 0; transform: translateY(-6px) scale(0.96); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+body.admin-theme .navbar-avatar-menu-head {
+    padding: 8px 10px 10px;
+    border-bottom: 2px dashed rgba(26, 26, 26, 0.3);
+    margin-bottom: 4px;
+}
+
+body.admin-theme .navbar-avatar-menu-name {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--ca-ink);
+    line-height: 1.2;
+    word-break: break-all;
+}
+
+body.admin-theme .navbar-avatar-menu-role {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ca-ink-soft);
+    margin-top: 2px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+body.admin-theme .navbar-avatar-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 10px;
+    background: transparent;
+    color: var(--ca-ink);
+    border: var(--ca-border-thin);
+    border-radius: var(--ca-r-sm);
+    font-size: 13.5px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    transition: transform var(--ca-tx), box-shadow var(--ca-tx), background var(--ca-tx);
+}
+
+body.admin-theme .navbar-avatar-menu-item i {
+    width: 16px;
+    height: 16px;
+    color: var(--ca-ink);
+}
+
+body.admin-theme .navbar-avatar-menu-item:hover {
+    background: var(--ca-cream);
+    transform: translate(-1px, -1px);
+    box-shadow: var(--ca-shadow-xs);
+}
+
+body.admin-theme .navbar-avatar-menu-item-danger:hover {
+    background: var(--ca-secondary);
+    color: var(--ca-ink);
+}
+
+/* ----- 个人资料弹窗 ----- */
+body.admin-theme .profile-avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 6px 0;
+}
+
+body.admin-theme .profile-avatar-preview-wrap {
+    position: relative;
+    width: 92px;
+    height: 92px;
+    flex-shrink: 0;
+    background: var(--ca-cream);
+    border: var(--ca-border-thick);
+    border-radius: 50%;
+    box-shadow: var(--ca-shadow-sm);
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.admin-theme .profile-avatar-preview-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+body.admin-theme .profile-avatar-preview-wrap img[hidden] { display: none !important; }
+
+body.admin-theme .profile-avatar-fallback {
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--ca-ink);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+body.admin-theme .profile-avatar-fallback[hidden] { display: none !important; }
+
+body.admin-theme .profile-avatar-actions {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+body.admin-theme .profile-hint {
+    flex-basis: 100%;
+    margin: 4px 0 0;
+    color: var(--ca-ink-soft);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* 移动端：navbar 右侧紧凑 */
+@media (max-width: 760px) {
+    body.admin-theme .navbar-icon-btn {
+        width: 36px;
+        height: 36px;
+    }
+    body.admin-theme .navbar-avatar-btn {
+        width: 36px;
+        height: 36px;
+    }
+    body.admin-theme .navbar-avatar-menu {
+        right: 0;
+        min-width: 180px;
+    }
+}
+/* ================================================================ */

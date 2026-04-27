@@ -59,6 +59,16 @@ async def get_pending_renewal_request_count(db: AsyncSession) -> int:
     return int(result.scalar() or 0)
 
 
+async def resolve_admin_profile(db: AsyncSession) -> Dict[str, str]:
+    """读取管理员个人资料（昵称 + 头像 data URL）。"""
+    nickname = (await settings_service.get_setting(db, "admin_nickname", "") or "").strip()
+    avatar = await settings_service.get_setting(db, "admin_avatar", "") or ""
+    return {
+        "nickname": nickname,
+        "avatar": avatar,
+    }
+
+
 async def build_admin_base_context(
     request: Request,
     db: AsyncSession,
@@ -72,6 +82,7 @@ async def build_admin_base_context(
         "active_page": active_page,
         "ui_theme": await resolve_ui_theme(db),
         "pending_renewal_request_count": await get_pending_renewal_request_count(db),
+        "admin_profile": await resolve_admin_profile(db),
     }
 
 
@@ -2322,6 +2333,12 @@ class UiThemeSettingsRequest(BaseModel):
     theme: Literal["ocean", "warm"] = Field(DEFAULT_UI_THEME, description="系统配色主题")
 
 
+class AdminProfileRequest(BaseModel):
+    """管理员个人资料更新请求"""
+    nickname: str = Field("", max_length=32, description="昵称")
+    avatar: str = Field("", description="头像 data URL（image/* base64）；空字符串表示清除")
+
+
 class AnnouncementUpdateRequest(BaseModel):
     """公告配置请求"""
     enabled: bool = Field(False, description="是否启用公告")
@@ -2372,6 +2389,65 @@ async def update_ui_theme_settings(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"success": False, "error": "更新失败，请稍后重试"}
+        )
+
+
+# 头像 data URL 上限（约等于 1MB 二进制 + base64 30% 膨胀）
+_ADMIN_AVATAR_MAX_LEN = 1_400_000
+
+
+@router.get("/settings/profile")
+async def get_admin_profile(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """获取管理员个人资料（昵称 + 头像）。"""
+    profile = await resolve_admin_profile(db)
+    return JSONResponse(content={"success": True, **profile})
+
+
+@router.post("/settings/profile")
+async def update_admin_profile(
+    profile_data: AdminProfileRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """更新管理员个人资料。"""
+    try:
+        nickname = (profile_data.nickname or "").strip()
+        avatar = (profile_data.avatar or "").strip()
+
+        if avatar and not avatar.startswith("data:image/"):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "头像格式无效，请上传图片"}
+            )
+        if avatar and len(avatar) > _ADMIN_AVATAR_MAX_LEN:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"success": False, "error": "头像太大，请压缩后再上传"}
+            )
+
+        await settings_service.update_setting(db, "admin_nickname", nickname)
+        await settings_service.update_setting(db, "admin_avatar", avatar)
+
+        logger.info(
+            "管理员更新个人资料: nickname_len=%s, has_avatar=%s",
+            len(nickname),
+            bool(avatar),
+        )
+
+        return JSONResponse(content={
+            "success": True,
+            "message": "已保存",
+            "nickname": nickname,
+            "avatar": avatar,
+        })
+    except Exception:
+        logger.exception("更新管理员个人资料失败")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": "保存失败，请稍后重试"}
         )
 
 @router.get("/announcement", response_class=HTMLResponse)
