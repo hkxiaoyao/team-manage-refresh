@@ -240,6 +240,24 @@
             {% endif %}
         </div>
 
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="autoKickAdminInvitedEnabled" name="admin_invited_enabled" {% if (auto_kick_admin_invited_enabled or 'false')|lower in ['1','true','yes','on'] %}checked{% endif %}>
+                <span>启用后台邀请过期踢人（管理员手工邀请也按期限到期）</span>
+            </label>
+            <p class="form-help">仅扫"开关启用之后"新发出的后台邀请，超过下方期限自动踢出。开关启用之前已邀请的成员永久豁免。</p>
+            {% if auto_kick_admin_invited_enabled_since %}
+            <p class="form-help" style="color: var(--accent-color, #2563eb);">生效起点：{{ auto_kick_admin_invited_enabled_since }}</p>
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            <label for="autoKickAdminInvitedPeriodDays">后台邀请使用期限 (天)</label>
+            <input type="number" id="autoKickAdminInvitedPeriodDays" name="admin_invited_period_days"
+                value="{{ auto_kick_admin_invited_period_days or '30' }}" min="1" max="3650" class="form-control">
+            <p class="form-help">从"邀请发出时刻"起算，超过该期限的后台邀请会被自动踢人扫描清退。需要继续使用请重新邀请。</p>
+        </div>
+
         <p class="form-help">该操作不可恢复，开启前请确认售后流程允许自动清退成员并销毁兑换码。</p>
         <button type="submit" class="btn btn-primary">保存自动踢人配置</button>
     </form>
@@ -638,6 +656,9 @@
         const usage_period_days = parseInt(document.getElementById('autoKickUsagePeriodDays').value);
         const unauthorizedToggle = document.getElementById('autoKickUnauthorizedEnabled');
         const unauthorized_enabled = !!(unauthorizedToggle && unauthorizedToggle.checked);
+        const adminInvitedToggle = document.getElementById('autoKickAdminInvitedEnabled');
+        const admin_invited_enabled = !!(adminInvitedToggle && adminInvitedToggle.checked);
+        const admin_invited_period_days = parseInt(document.getElementById('autoKickAdminInvitedPeriodDays').value);
 
         if (isNaN(interval_hours) || interval_hours < 1 || interval_hours > 168) {
             showToast('检查间隔必须在 1~168 小时之间', 'error');
@@ -654,13 +675,18 @@
             return;
         }
 
+        if (isNaN(admin_invited_period_days) || admin_invited_period_days < 1 || admin_invited_period_days > 3650) {
+            showToast('后台邀请使用期限必须在 1~3650 天之间', 'error');
+            return;
+        }
+
         try {
             const response = await fetch('/admin/settings/warranty-auto-kick', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ enabled, interval_hours, renewal_reminder_days, usage_period_days, unauthorized_enabled })
+                body: JSON.stringify({ enabled, interval_hours, renewal_reminder_days, usage_period_days, unauthorized_enabled, admin_invited_enabled, admin_invited_period_days })
             });
 
             const data = await response.json();

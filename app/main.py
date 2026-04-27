@@ -325,27 +325,51 @@ async def scheduled_warranty_auto_kick():
     try:
         async with AsyncSessionLocal() as session:
             unauth_stats = await warranty_service.run_unauthorized_member_auto_kick(session)
-            if not unauth_stats.get("enabled"):
-                return
-            if unauth_stats.get("success"):
-                logger.info(
-                    "非授权成员清退完成: scanned=%s kicked=%s skipped=%s failed=%s",
-                    unauth_stats.get("scanned", 0),
-                    unauth_stats.get("kicked", 0),
-                    unauth_stats.get("skipped", 0),
-                    unauth_stats.get("failed", 0),
-                )
-            else:
-                logger.warning(
-                    "非授权成员清退部分失败: scanned=%s kicked=%s skipped=%s failed=%s error=%s",
-                    unauth_stats.get("scanned", 0),
-                    unauth_stats.get("kicked", 0),
-                    unauth_stats.get("skipped", 0),
-                    unauth_stats.get("failed", 0),
-                    unauth_stats.get("error"),
-                )
+            if unauth_stats.get("enabled"):
+                if unauth_stats.get("success"):
+                    logger.info(
+                        "非授权成员清退完成: scanned=%s kicked=%s skipped=%s failed=%s",
+                        unauth_stats.get("scanned", 0),
+                        unauth_stats.get("kicked", 0),
+                        unauth_stats.get("skipped", 0),
+                        unauth_stats.get("failed", 0),
+                    )
+                else:
+                    logger.warning(
+                        "非授权成员清退部分失败: scanned=%s kicked=%s skipped=%s failed=%s error=%s",
+                        unauth_stats.get("scanned", 0),
+                        unauth_stats.get("kicked", 0),
+                        unauth_stats.get("skipped", 0),
+                        unauth_stats.get("failed", 0),
+                        unauth_stats.get("error"),
+                    )
     except Exception as e:
         logger.error(f"非授权成员清退任务执行失败: {e}")
+
+    # 再跑一次"后台邀请过期"踢人（独立开关，独立期限）。
+    try:
+        async with AsyncSessionLocal() as session:
+            admin_inv_stats = await warranty_service.run_admin_invited_member_auto_kick(session)
+            if admin_inv_stats.get("enabled"):
+                if admin_inv_stats.get("success"):
+                    logger.info(
+                        "后台邀请过期踢人完成: scanned=%s kicked=%s skipped=%s failed=%s",
+                        admin_inv_stats.get("scanned", 0),
+                        admin_inv_stats.get("kicked", 0),
+                        admin_inv_stats.get("skipped", 0),
+                        admin_inv_stats.get("failed", 0),
+                    )
+                else:
+                    logger.warning(
+                        "后台邀请过期踢人部分失败: scanned=%s kicked=%s skipped=%s failed=%s error=%s",
+                        admin_inv_stats.get("scanned", 0),
+                        admin_inv_stats.get("kicked", 0),
+                        admin_inv_stats.get("skipped", 0),
+                        admin_inv_stats.get("failed", 0),
+                        admin_inv_stats.get("error"),
+                    )
+    except Exception as e:
+        logger.error(f"后台邀请过期踢人任务执行失败: {e}")
 
 
 @asynccontextmanager

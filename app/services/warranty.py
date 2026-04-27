@@ -1448,6 +1448,305 @@ class WarrantyService:
             "error": None if failed == 0 else "部分非授权成员处理失败",
         }
 
+    @staticmethod
+    def _normalize_admin_invited_period_days(value: Any) -> int:
+        """规范化后台邀请过期踢人的期限（天）。"""
+        try:
+            days = int(value)
+        except (TypeError, ValueError):
+            days = 30
+        return max(1, min(days, 3650))
+
+    async def scan_admin_invited_expired_members(
+        self,
+        db_session: AsyncSession,
+    ) -> Dict[str, Any]:
+        """扫描所有 Team 中"后台邀请且已过期"的成员。
+
+        定义为：仍处于 invited / joined 状态、``is_admin_invited`` 为 True 的
+        TeamEmailMapping，且全部满足：
+        - ``mapping.created_at >= auto_kick_admin_invited_enabled_since``：仅扫
+          开关启用之后新发出的邀请，开关启用前已存在的成员永远豁免；
+        - ``now >= mapping.created_at + auto_kick_admin_invited_period_days``。
+        """
+        try:
+            enabled = await settings_service.get_setting(
+                db_session, "auto_kick_admin_invited_enabled", "false"
+            )
+            if str(enabled).strip().lower() not in ("1", "true", "yes", "on"):
+                return {
+                    "success": True,
+                    "candidates": [],
+                    "total": 0,
+                    "enabled": False,
+                    "enabled_since": None,
+                    "period_days": None,
+                    "error": None,
+                }
+
+            since_raw = await settings_service.get_setting(
+                db_session, "auto_kick_admin_invited_enabled_since", ""
+            )
+            enabled_since: Optional[datetime] = None
+            if since_raw:
+                try:
+                    enabled_since = datetime.fromisoformat(str(since_raw).strip())
+                except ValueError:
+                    enabled_since = None
+            if not enabled_since:
+                # 没有有效的启用时间戳时不做任何动作，避免误判存量成员。
+                return {
+                    "success": True,
+                    "candidates": [],
+                    "total": 0,
+                    "enabled": True,
+                    "enabled_since": None,
+                    "period_days": None,
+                    "error": None,
+                }
+
+            period_raw = await settings_service.get_setting(
+                db_session, "auto_kick_admin_invited_period_days", "30"
+            )
+            period_days = self._normalize_admin_invited_period_days(period_raw)
+            now = get_now()
+            cutoff = now - timedelta(days=period_days)
+
+            # 1. 拿出所有"开启之后创建"且仍在活跃状态、且 is_admin_invited 的映射；
+            #    只取 created_at <= cutoff（已经过期）的，不过期的不参与扫描。
+            stmt = (
+                select(TeamEmailMapping, Team)
+                .join(Team, Team.id == TeamEmailMapping.team_id)
+                .where(
+                    TeamEmailMapping.status.in_(("invited", "joined")),
+                    TeamEmailMapping.is_admin_invited.is_(True),
+                    TeamEmailMapping.created_at.is_not(None),
+                    TeamEmailMapping.created_at >= enabled_since,
+                    TeamEmailMapping.created_at <= cutoff,
+                )
+                .order_by(TeamEmailMapping.team_id.asc(), TeamEmailMapping.id.asc())
+            )
+            result = await db_session.execute(stmt)
+            rows = result.all()
+
+            if not rows:
+                return {
+                    "success": True,
+                    "candidates": [],
+                    "total": 0,
+                    "enabled": True,
+                    "enabled_since": enabled_since.isoformat(),
+                    "period_days": period_days,
+                    "error": None,
+                }
+
+            candidates: List[Dict[str, Any]] = []
+            for mapping, team in rows:
+                normalized = self.team_service._normalize_member_email(mapping.email)
+                if not normalized:
+                    continue
+                # owner 邮箱兜底：理论上不会被打 admin_invited，但防御性跳过。
+                owner_email = self.team_service._normalize_member_email(team.email)
+                if owner_email and normalized == owner_email:
+                    continue
+                expiry_at = mapping.created_at + timedelta(days=period_days)
+                candidates.append({
+                    "mapping_id": mapping.id,
+                    "team_id": mapping.team_id,
+                    "email": normalized,
+                    "status": mapping.status,
+                    "source": mapping.source,
+                    "created_at": mapping.created_at.isoformat() if mapping.created_at else None,
+                    "expiry_at": expiry_at.isoformat(),
+                })
+
+            return {
+                "success": True,
+                "candidates": candidates,
+                "total": len(candidates),
+                "enabled": True,
+                "enabled_since": enabled_since.isoformat(),
+                "period_days": period_days,
+                "error": None,
+            }
+        except Exception as e:
+            logger.exception("扫描后台邀请过期成员失败")
+            return {
+                "success": False,
+                "candidates": [],
+                "total": 0,
+                "enabled": None,
+                "enabled_since": None,
+                "period_days": None,
+                "error": f"扫描失败: {str(e)}",
+            }
+
+    async def kick_admin_invited_expired_member(
+        self,
+        db_session: AsyncSession,
+        team_id: int,
+        email: str,
+    ) -> Dict[str, Any]:
+        """对单个后台邀请过期成员执行踢人。
+
+        仅清理 Team 端成员关系并把 TeamEmailMapping 标记为 removed
+        (source="auto_kick_admin_invited")。`is_admin_invited` 标记保留，
+        方便后续审计 / 重新邀请时识别为同一人。
+        """
+        try:
+            normalized_email = self.team_service._normalize_member_email(email)
+            if not team_id or not normalized_email:
+                return {
+                    "success": False,
+                    "team_id": team_id,
+                    "email": email,
+                    "category": "skipped",
+                    "skip_reason": "invalid_target",
+                    "error": "team_id 或 email 不合法",
+                }
+
+            # 重读 mapping 防止并发：admin 可能刚刚删除 / 重新邀请。
+            stmt = select(TeamEmailMapping).where(
+                TeamEmailMapping.team_id == team_id,
+                TeamEmailMapping.email == normalized_email,
+            )
+            result = await db_session.execute(stmt)
+            mapping = result.scalar_one_or_none()
+            if not mapping or mapping.status not in ("invited", "joined"):
+                return {
+                    "success": True,
+                    "team_id": team_id,
+                    "email": normalized_email,
+                    "category": "skipped",
+                    "skip_reason": "no_active_mapping",
+                    "error": None,
+                }
+            if not mapping.is_admin_invited:
+                return {
+                    "success": True,
+                    "team_id": team_id,
+                    "email": normalized_email,
+                    "category": "skipped",
+                    "skip_reason": "not_admin_invited",
+                    "error": None,
+                }
+
+            # owner 邮箱二次兜底
+            team = await db_session.get(Team, team_id)
+            if team:
+                owner_email = self.team_service._normalize_member_email(team.email)
+                if owner_email and owner_email == normalized_email:
+                    return {
+                        "success": True,
+                        "team_id": team_id,
+                        "email": normalized_email,
+                        "category": "skipped",
+                        "skip_reason": "team_owner",
+                        "error": None,
+                    }
+
+            remove_result = await self.team_service.remove_invite_or_member(
+                team_id, normalized_email, db_session
+            )
+            if not remove_result.get("success"):
+                return {
+                    "success": False,
+                    "team_id": team_id,
+                    "email": normalized_email,
+                    "category": "failed",
+                    "error": remove_result.get("error") or "踢出后台邀请过期成员失败",
+                }
+
+            await self.team_service.mark_team_email_mapping_removed(
+                team_id=team_id,
+                email=normalized_email,
+                db_session=db_session,
+                source="auto_kick_admin_invited",
+            )
+            await db_session.commit()
+
+            return {
+                "success": True,
+                "team_id": team_id,
+                "email": normalized_email,
+                "category": "kicked",
+                "action": "kicked_admin_invited",
+                "message": remove_result.get("message") or "已踢出后台邀请过期成员",
+                "error": None,
+            }
+        except Exception as e:
+            logger.exception("踢出后台邀请过期成员失败")
+            return {
+                "success": False,
+                "team_id": team_id,
+                "email": email,
+                "category": "failed",
+                "error": f"踢出后台邀请过期成员失败: {str(e)}",
+            }
+
+    async def run_admin_invited_member_auto_kick(
+        self,
+        db_session: AsyncSession,
+    ) -> Dict[str, Any]:
+        """扫描并踢出所有 Team 的后台邀请过期成员（由总开关控制）。"""
+        scan_result = await self.scan_admin_invited_expired_members(db_session)
+        if not scan_result.get("success"):
+            return {
+                "success": False,
+                "enabled": scan_result.get("enabled"),
+                "scanned": 0,
+                "kicked": 0,
+                "skipped": 0,
+                "failed": 0,
+                "results": [],
+                "error": scan_result.get("error") or "扫描失败",
+            }
+        if not scan_result.get("enabled"):
+            return {
+                "success": True,
+                "enabled": False,
+                "scanned": 0,
+                "kicked": 0,
+                "skipped": 0,
+                "failed": 0,
+                "results": [],
+                "error": None,
+            }
+
+        candidates = scan_result.get("candidates", [])
+        results: List[Dict[str, Any]] = []
+        kicked = 0
+        skipped = 0
+        failed = 0
+
+        for candidate in candidates:
+            item_result = await self.kick_admin_invited_expired_member(
+                db_session,
+                candidate.get("team_id"),
+                candidate.get("email", ""),
+            )
+            results.append(item_result)
+            category = item_result.get("category")
+            if category == "kicked":
+                kicked += 1
+            elif category == "skipped":
+                skipped += 1
+            else:
+                failed += 1
+
+        return {
+            "success": failed == 0,
+            "enabled": True,
+            "enabled_since": scan_result.get("enabled_since"),
+            "period_days": scan_result.get("period_days"),
+            "scanned": len(candidates),
+            "kicked": kicked,
+            "skipped": skipped,
+            "failed": failed,
+            "results": results,
+            "error": None if failed == 0 else "部分后台邀请过期成员处理失败",
+        }
+
     async def validate_warranty_reuse(
         self,
         db_session: AsyncSession,
