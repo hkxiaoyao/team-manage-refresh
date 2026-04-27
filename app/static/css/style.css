@@ -5902,13 +5902,22 @@ body.admin-theme.auth-page .auth-brand-name.cartoon-brand-title {
     letter-spacing: -0.3px;
 }
 
+/* 卡通主题下特性卡改单列 + 满宽，避免 4 字标题折行 */
+body.admin-theme.auth-page .auth-feature-list {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    max-width: 460px;
+}
 body.admin-theme.auth-page .auth-feature-list li {
     background: var(--ca-surface);
     border: 2.4px solid var(--ca-ink);
     border-radius: 14px;
     box-shadow: 4px 4px 0 var(--ca-ink);
-    padding: 10px 12px;
+    padding: 10px 14px;
     transition: transform 120ms ease, box-shadow 120ms ease;
+}
+body.admin-theme.auth-page .auth-feature-list li strong {
+    white-space: nowrap;
 }
 body.admin-theme.auth-page .auth-feature-list li:hover {
     transform: translate(-1px, -1px);
@@ -6054,41 +6063,177 @@ body.admin-theme.auth-page .auth-theme-toggle:hover {
     box-shadow: 3.5px 3.5px 0 var(--ca-ink);
 }
 
-/* 浮动几何贴纸（呼应兑换页 / admin 卡通风格） */
+/* === 登录页浮动几何贴纸（多元素，呼应兑换页 / admin 卡通风格） === */
 body.admin-theme.auth-page .auth-shell {
     position: relative;
     overflow: hidden;
 }
-body.admin-theme.auth-page .auth-shell::before,
-body.admin-theme.auth-page .auth-shell::after {
-    content: "";
-    position: absolute;
-    border: 3px solid var(--ca-ink);
-    box-shadow: 5px 5px 0 var(--ca-ink);
-    pointer-events: none;
-    z-index: 0;
-}
-body.admin-theme.auth-page .auth-shell::before {
-    width: 64px;
-    height: 64px;
-    background: var(--ca-secondary);
-    border-radius: 14px;
-    top: 6%;
-    right: 12%;
-    transform: rotate(8deg);
-}
-body.admin-theme.auth-page .auth-shell::after {
-    width: 56px;
-    height: 56px;
-    background: var(--ca-success);
-    border-radius: 50%;
-    bottom: 10%;
-    left: 8%;
-    transform: rotate(-6deg);
-}
 body.admin-theme.auth-page .auth-layout {
     position: relative;
+    z-index: 2;
+}
+
+body.admin-theme.auth-page .auth-stickers {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
     z-index: 1;
+}
+body.admin-theme.auth-page .auth-sticker {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+body.admin-theme.auth-page .auth-sticker svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+@keyframes authFloat1 {
+    0%, 100% { transform: translateY(0) rotate(var(--rot, 0deg)); }
+    50%      { transform: translateY(-8px) rotate(calc(var(--rot, 0deg) + 3deg)); }
+}
+@keyframes authFloat2 {
+    0%, 100% { transform: translateY(0) rotate(var(--rot, 0deg)); }
+    50%      { transform: translateY(6px) rotate(calc(var(--rot, 0deg) - 4deg)); }
+}
+
+/* 大块几何（带描边阴影） */
+body.admin-theme.auth-page .auth-sticker-square {
+    width: 64px; height: 64px;
+    background: var(--ca-secondary);
+    border: 3px solid var(--ca-ink);
+    border-radius: 14px;
+    box-shadow: 5px 5px 0 var(--ca-ink);
+    --rot: 8deg;
+    top: 7%; right: 11%;
+    animation: authFloat1 5.4s ease-in-out infinite;
+}
+body.admin-theme.auth-page .auth-sticker-circle {
+    width: 56px; height: 56px;
+    background: var(--ca-success);
+    border: 3px solid var(--ca-ink);
+    border-radius: 50%;
+    box-shadow: 5px 5px 0 var(--ca-ink);
+    --rot: -6deg;
+    bottom: 11%; left: 6%;
+    animation: authFloat2 6.8s ease-in-out infinite;
+}
+
+/* 三角 / 星 / 爱心 / 加号（SVG 图形） */
+body.admin-theme.auth-page .auth-sticker-triangle {
+    width: 58px; height: 58px;
+    color: var(--ca-info);
+    --rot: -12deg;
+    top: 64%; left: 4%;
+    transform: rotate(-12deg);
+    filter: drop-shadow(4px 4px 0 var(--ca-ink));
+    animation: authFloat1 7.2s ease-in-out infinite;
+}
+body.admin-theme.auth-page .auth-sticker-star {
+    width: 46px; height: 46px;
+    color: var(--ca-primary);
+    --rot: 14deg;
+    top: 14%; left: 36%;
+    transform: rotate(14deg);
+    filter: drop-shadow(3.5px 3.5px 0 var(--ca-ink));
+    animation: authFloat2 5.6s ease-in-out infinite;
+}
+body.admin-theme.auth-page .auth-sticker-heart {
+    width: 50px; height: 50px;
+    color: var(--ca-pink, var(--ca-secondary));
+    --rot: -8deg;
+    top: 38%; right: 4%;
+    transform: rotate(-8deg);
+    filter: drop-shadow(4px 4px 0 var(--ca-ink));
+    animation: authFloat1 6.2s ease-in-out infinite;
+}
+body.admin-theme.auth-page .auth-sticker-plus {
+    width: 44px; height: 44px;
+    color: var(--ca-accent, var(--ca-info));
+    --rot: 18deg;
+    bottom: 22%; right: 18%;
+    transform: rotate(18deg);
+    filter: drop-shadow(3.5px 3.5px 0 var(--ca-ink));
+    animation: authFloat2 7.6s ease-in-out infinite;
+}
+body.admin-theme.auth-page .auth-sticker-spark {
+    width: 38px; height: 38px;
+    color: var(--ca-warning, var(--ca-primary));
+    --rot: -16deg;
+    bottom: 8%; left: 38%;
+    transform: rotate(-16deg);
+    filter: drop-shadow(3px 3px 0 var(--ca-ink));
+    animation: authFloat1 5.8s ease-in-out infinite;
+}
+
+/* 锯齿装饰线条 */
+body.admin-theme.auth-page .auth-sticker-zigzag {
+    width: 130px; height: 32px;
+    top: 6%; left: 14%;
+    color: var(--ca-ink);
+    opacity: 0.85;
+    transform: rotate(-4deg);
+}
+
+/* 小圆点 confetti */
+body.admin-theme.auth-page .auth-sticker-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2.4px solid var(--ca-ink);
+}
+body.admin-theme.auth-page .auth-sticker-dot-1 {
+    background: var(--ca-primary);
+    top: 56%; left: 12%;
+    animation: authFloat2 4.8s ease-in-out infinite;
+}
+body.admin-theme.auth-page .auth-sticker-dot-2 {
+    background: var(--ca-info);
+    top: 78%; right: 26%;
+    animation: authFloat1 5.2s ease-in-out infinite;
+}
+body.admin-theme.auth-page .auth-sticker-dot-3 {
+    background: var(--ca-secondary);
+    top: 30%; right: 28%;
+    animation: authFloat2 6.4s ease-in-out infinite;
+}
+
+/* 中等屏隐藏部分贴纸避免拥挤 */
+@media (max-width: 1100px) {
+    body.admin-theme.auth-page .auth-sticker-zigzag,
+    body.admin-theme.auth-page .auth-sticker-dot-3 {
+        display: none;
+    }
+}
+@media (max-width: 760px) {
+    /* 移动端只保留小尺寸 SVG 装饰，避免和 FAB 撞角 */
+    body.admin-theme.auth-page .auth-sticker-square,
+    body.admin-theme.auth-page .auth-sticker-plus,
+    body.admin-theme.auth-page .auth-sticker-spark,
+    body.admin-theme.auth-page .auth-sticker-dot-1,
+    body.admin-theme.auth-page .auth-sticker-dot-2 {
+        display: none;
+    }
+    body.admin-theme.auth-page .auth-sticker-circle {
+        width: 38px; height: 38px;
+        bottom: 6%; left: 5%;
+        box-shadow: 3.5px 3.5px 0 var(--ca-ink);
+    }
+    body.admin-theme.auth-page .auth-sticker-triangle {
+        width: 40px; height: 40px;
+        top: auto; bottom: 18%; left: 5%;
+    }
+    body.admin-theme.auth-page .auth-sticker-star {
+        width: 30px; height: 30px;
+        top: 4%; left: 8%;
+    }
+    body.admin-theme.auth-page .auth-sticker-heart {
+        width: 32px; height: 32px;
+        top: 22%; right: 6%;
+    }
 }
 
 @media (max-width: 760px) {
