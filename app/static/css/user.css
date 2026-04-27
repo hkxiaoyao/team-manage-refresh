@@ -1,30 +1,16 @@
 /* ============================================================
    redeem.html · Cartoon / Neobrutalism 卡通风格
-   配色：奶白纸张 + 黄/珊瑚/薄荷/天空/粉 + 墨黑实线
+   双主题：theme-warm（暖：奶白+黄）/ theme-ocean（冷：冰蓝+天空蓝）
    特征：粗黑描边 + 偏移实色阴影 + 漂浮几何贴纸 + 超粗大字
    ============================================================ */
 
+/* ----- 结构 token（不随主题变） ----- */
 :root {
-  --c-paper:      #fdf8e8;
-  --c-paper-2:    #faf0d4;
   --c-ink:        #1a1a1a;
   --c-ink-soft:   #4a4a4a;
   --c-ink-muted:  #7a7a7a;
-  --c-yellow:     #ffd43b;
-  --c-yellow-2:   #f7b801;
-  --c-coral:      #ff6b6b;
-  --c-mint:       #95f1d5;
-  --c-sky:        #6dd3ff;
-  --c-pink:       #ffa6c9;
-  --c-purple:     #c8a2ff;
-  --c-cream:      #fff7d6;
 
-  --c-success:    #2ecc71;
-  --c-warn:       #ffa552;
-  --c-danger:     #ff5d6c;
-  --c-info:       #4ea8ff;
-
-  --c-border:     2.5px solid var(--c-ink);
+  --c-border:       2.5px solid var(--c-ink);
   --c-border-thick: 3px solid var(--c-ink);
   --c-shadow-sm:  3px 3px 0 var(--c-ink);
   --c-shadow-md:  5px 5px 0 var(--c-ink);
@@ -38,6 +24,73 @@
 
   --c-tx:         200ms cubic-bezier(.4, 0, .2, 1);
   --c-bounce:     220ms cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* ----- 暖调（默认 + theme-warm）：奶白纸张 + 黄/珊瑚/薄荷/天空/粉/紫 ----- */
+body.redeem-page,
+body.redeem-page.theme-warm {
+  --c-paper:        #fdf8e8;
+  --c-paper-2:      #faf0d4;
+  --c-cream:        #fff7d6;
+  --c-surface:      #ffffff;
+  --c-surface-soft: #fffce0;
+
+  --c-primary:      #ffd43b;  /* 主色 黄 */
+  --c-primary-2:    #f7b801;
+  --c-secondary:    #ff6b6b;  /* 珊瑚 */
+  --c-success:      #95f1d5;  /* 薄荷 */
+  --c-info:         #6dd3ff;  /* 天空蓝 */
+  --c-pink:         #ffa6c9;
+  --c-accent:       #c8a2ff;  /* 紫 */
+
+  --c-info-box-bg:    #d8efff;
+  --c-warning-box-bg: #fff0c2;
+
+  /* 6 张贴纸的填充色 */
+  --sk-1: #ffd43b;  /* 笑脸 - 黄 */
+  --sk-2: #95f1d5;  /* 三角 - 薄荷 */
+  --sk-3: #ff6b6b;  /* 方块 - 珊瑚 */
+  --sk-4: #6dd3ff;  /* 十角星 - 天空蓝 */
+  --sk-5: #ffa6c9;  /* 爱心 - 粉 */
+  --sk-6: #c8a2ff;  /* 六边形 - 紫 */
+}
+
+/* ----- 冷调（theme-ocean）：淡冰蓝纸张 + 天空蓝/玫红/青绿/薰衣草/粉/紫蓝 ----- */
+body.redeem-page.theme-ocean {
+  --c-paper:        #eaf2fc;
+  --c-paper-2:      #d8e6f5;
+  --c-cream:        #dceaff;       /* 替代奶油色（冷感）*/
+  --c-surface:      #ffffff;
+  --c-surface-soft: #eaf2ff;
+
+  --c-primary:      #5eb8ff;  /* 主色 天空蓝 */
+  --c-primary-2:    #2e96e5;
+  --c-secondary:    #ff7a90;  /* 玫红 */
+  --c-success:      #7ce0c4;  /* 青绿 */
+  --c-info:         #b794f6;  /* 薰衣草 */
+  --c-pink:         #ffb1d8;
+  --c-accent:       #8b9eff;  /* 紫蓝 / 长春花 */
+
+  --c-info-box-bg:    #c8dfff;
+  --c-warning-box-bg: #ffd9e0;
+
+  /* 贴纸：保持位置，配色冷化 */
+  --sk-1: #5eb8ff;  /* 笑脸 - 天空蓝 */
+  --sk-2: #7ce0c4;  /* 三角 - 青绿 */
+  --sk-3: #ff7a90;  /* 方块 - 玫红 */
+  --sk-4: #b794f6;  /* 十角星 - 薰衣草 */
+  --sk-5: #ffb1d8;  /* 爱心 - 浅玫粉 */
+  --sk-6: #8b9eff;  /* 六边形 - 紫蓝 */
+}
+
+/* ----- 旧颜色变量名向后兼容（组件内还在用 --c-yellow / --c-coral 等） ----- */
+body.redeem-page {
+  --c-yellow:   var(--c-primary);
+  --c-yellow-2: var(--c-primary-2);
+  --c-coral:    var(--c-secondary);
+  --c-mint:     var(--c-success);
+  --c-sky:      var(--c-info);
+  --c-purple:   var(--c-accent);
 }
 
 /* ============================================================
@@ -90,6 +143,14 @@ body.redeem-page {
   animation: sticker-float 9s ease-in-out infinite;
 }
 .sticker svg { display: block; width: 100%; height: 100%; }
+
+/* 主题色驱动贴纸填充 */
+.sticker-1 .sk-fill { fill: var(--sk-1); }
+.sticker-2 .sk-fill { fill: var(--sk-2); }
+.sticker-3 .sk-fill { fill: var(--sk-3); }
+.sticker-4 .sk-fill { fill: var(--sk-4); }
+.sticker-5 .sk-fill { fill: var(--sk-5); }
+.sticker-6 .sk-fill { fill: var(--sk-6); }
 
 .sticker-1 { top: 6%;  left: -34px; width: 130px; height: 130px; animation-delay: 0s;    transform: rotate(-12deg); }
 .sticker-2 { top: 10%; right: -24px; width: 110px; height: 110px; animation-delay: -2.4s; transform: rotate(14deg); }
@@ -194,12 +255,22 @@ body.redeem-page {
   max-width: 36ch;
 }
 
+/* 名额徐章并排一行 */
+.spots-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
 .spots-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: var(--c-mint);
+  background: var(--c-success);
   color: var(--c-ink);
   border: var(--c-border);
   border-radius: var(--c-r-pill);
@@ -219,10 +290,15 @@ body.redeem-page {
   padding: 0 6px;
   margin: 0 1px;
   background: var(--c-ink);
-  color: var(--c-yellow);
+  color: var(--c-primary);
   border-radius: 6px;
   font-weight: 800;
   text-align: center;
+}
+
+@media (max-width: 480px) {
+  .spots-row { gap: 8px; }
+  .spots-badge { font-size: 12px; padding: 7px 12px; }
 }
 
 /* ============================================================
@@ -249,7 +325,7 @@ body.redeem-page {
   justify-content: center;
   gap: 8px;
   padding: 12px 14px;
-  background: #ffffff;
+  background: var(--c-surface);
   color: var(--c-ink);
   border: var(--c-border);
   border-radius: var(--c-r-sm);
@@ -262,7 +338,7 @@ body.redeem-page {
 }
 .top-tab i { width: 18px; height: 18px; }
 .top-tab:hover {
-  background: #fff7d6;
+  background: var(--c-cream);
   transform: translate(-1px, -1px);
   box-shadow: var(--c-shadow-sm);
 }
@@ -297,7 +373,7 @@ body.redeem-page {
 
 .tab-panel {
   display: none;
-  background: #ffffff;
+  background: var(--c-surface);
   border: var(--c-border-thick);
   border-radius: var(--c-r-lg);
   box-shadow: var(--c-shadow-lg);
@@ -380,11 +456,11 @@ body.redeem-page {
   box-shadow: 3px 3px 0 var(--c-ink);
 }
 .info-box {
-  background: #d8efff;
+  background: var(--c-info-box-bg);
   color: var(--c-ink);
 }
 .warning-box {
-  background: #fff0c2;
+  background: var(--c-warning-box-bg);
   color: var(--c-ink);
 }
 .info-box .info-icon,
@@ -451,7 +527,7 @@ body.redeem-page {
   width: 100%;
   height: 54px;
   padding: 0 16px 0 46px;
-  background: #ffffff;
+  background: var(--c-surface);
   color: var(--c-ink);
   border: var(--c-border);
   border-radius: var(--c-r-md);
@@ -467,10 +543,10 @@ body.redeem-page {
   font-weight: 500;
 }
 .form-input:hover {
-  background: #fffce0;
+  background: var(--c-surface-soft);
 }
 .form-input:focus {
-  background: #fffce0;
+  background: var(--c-surface-soft);
   transform: translate(-2px, -2px);
   box-shadow: 5px 5px 0 var(--c-ink);
 }
@@ -532,7 +608,7 @@ body.redeem-page {
 }
 
 .btn-secondary {
-  background: #ffffff;
+  background: var(--c-surface);
   color: var(--c-ink);
   box-shadow: var(--c-shadow-sm);
 }
@@ -610,7 +686,7 @@ body.redeem-page {
 .result-details {
   margin: 16px 0 0;
   padding: 16px 18px;
-  background: #ffffff;
+  background: var(--c-surface);
   border: var(--c-border);
   border-radius: var(--c-r-md);
   box-shadow: 3px 3px 0 var(--c-ink);
@@ -672,7 +748,7 @@ body.redeem-page {
 .badge-success { background: var(--c-mint); color: var(--c-ink); }
 .badge-error   { background: var(--c-coral); color: #fff; }
 .badge-warn    { background: var(--c-yellow); color: var(--c-ink); }
-.badge-neutral { background: #ffffff; color: var(--c-ink); }
+.badge-neutral { background: var(--c-surface); color: var(--c-ink); }
 
 /* ============================================================
    Warranty view & records
@@ -685,7 +761,7 @@ body.redeem-page {
 
 .warranty-summary {
   padding: 18px 20px;
-  background: #ffffff;
+  background: var(--c-surface);
   border: var(--c-border-thick);
   border-radius: var(--c-r-md);
   box-shadow: var(--c-shadow-md);
@@ -743,7 +819,7 @@ body.redeem-page {
 
 .record-card {
   padding: 16px 18px;
-  background: #ffffff;
+  background: var(--c-surface);
   border: var(--c-border);
   border-radius: var(--c-r-md);
   box-shadow: 4px 4px 0 var(--c-ink);
@@ -807,7 +883,7 @@ body.redeem-page {
 .empty-result {
   padding: 28px 20px;
   text-align: center;
-  background: #ffffff;
+  background: var(--c-surface);
   border: 2.5px dashed var(--c-ink);
   border-radius: var(--c-r-md);
   color: var(--c-ink-soft);
@@ -820,7 +896,7 @@ body.redeem-page {
   width: 100%;
   height: 50px;
   padding: 0 14px;
-  background: #fffce0;
+  background: var(--c-surface-soft);
   border: var(--c-border);
   border-radius: var(--c-r-sm);
   font-family: 'JetBrains Mono', monospace;
@@ -923,7 +999,7 @@ body.redeem-page {
   font-size: 18px;
 }
 .announcement-close {
-  background: #ffffff;
+  background: var(--c-surface);
   border: var(--c-border);
   border-radius: var(--c-r-sm);
   width: 32px;
@@ -1007,7 +1083,7 @@ body.redeem-page {
    ============================================================ */
 .team-card {
   padding: 16px;
-  background: #ffffff;
+  background: var(--c-surface);
   border: var(--c-border);
   border-radius: var(--c-r-md);
   box-shadow: 3px 3px 0 var(--c-ink);
@@ -1017,7 +1093,7 @@ body.redeem-page {
 .team-card:hover {
   transform: translate(-2px, -2px);
   box-shadow: 5px 5px 0 var(--c-ink);
-  background: #fffce0;
+  background: var(--c-surface-soft);
 }
 .team-card.selected {
   background: var(--c-mint);

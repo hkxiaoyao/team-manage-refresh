@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/user.css?v=20260427-cartoon-1">
+    <link rel="stylesheet" href="/static/css/user.css?v=20260427-cartoon-2">
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
@@ -23,7 +23,7 @@
     <div class="cartoon-deco" aria-hidden="true">
         <div class="sticker sticker-1">
             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="50" cy="50" r="42" fill="#ffd43b" stroke="#1a1a1a" stroke-width="5"/>
+                <circle class="sk-fill" cx="50" cy="50" r="42" stroke="#1a1a1a" stroke-width="5"/>
                 <circle cx="38" cy="45" r="4" fill="#1a1a1a"/>
                 <circle cx="62" cy="45" r="4" fill="#1a1a1a"/>
                 <path d="M38 60 Q50 70 62 60" stroke="#1a1a1a" stroke-width="4" fill="none" stroke-linecap="round"/>
@@ -31,28 +31,28 @@
         </div>
         <div class="sticker sticker-2">
             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <polygon points="50,12 90,84 10,84" fill="#95f1d5" stroke="#1a1a1a" stroke-width="5" stroke-linejoin="round"/>
+                <polygon class="sk-fill" points="50,12 90,84 10,84" stroke="#1a1a1a" stroke-width="5" stroke-linejoin="round"/>
             </svg>
         </div>
         <div class="sticker sticker-3">
             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <rect x="15" y="15" width="70" height="70" rx="10" fill="#ff6b6b" stroke="#1a1a1a" stroke-width="5"/>
+                <rect class="sk-fill" x="15" y="15" width="70" height="70" rx="10" stroke="#1a1a1a" stroke-width="5"/>
                 <path d="M30 50 L46 66 L72 36" stroke="#1a1a1a" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </div>
         <div class="sticker sticker-4">
             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <path d="M50 8 L60 38 L92 38 L66 58 L76 90 L50 70 L24 90 L34 58 L8 38 L40 38 Z" fill="#6dd3ff" stroke="#1a1a1a" stroke-width="5" stroke-linejoin="round"/>
+                <path class="sk-fill" d="M50 8 L60 38 L92 38 L66 58 L76 90 L50 70 L24 90 L34 58 L8 38 L40 38 Z" stroke="#1a1a1a" stroke-width="5" stroke-linejoin="round"/>
             </svg>
         </div>
         <div class="sticker sticker-5">
             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <path d="M50 84 C20 64 10 42 26 28 C40 16 50 28 50 36 C50 28 60 16 74 28 C90 42 80 64 50 84 Z" fill="#ffa6c9" stroke="#1a1a1a" stroke-width="5" stroke-linejoin="round"/>
+                <path class="sk-fill" d="M50 84 C20 64 10 42 26 28 C40 16 50 28 50 36 C50 28 60 16 74 28 C90 42 80 64 50 84 Z" stroke="#1a1a1a" stroke-width="5" stroke-linejoin="round"/>
             </svg>
         </div>
         <div class="sticker sticker-6">
             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <path d="M50 14 L20 32 L20 68 L50 86 L80 68 L80 32 Z" fill="#c8a2ff" stroke="#1a1a1a" stroke-width="5" stroke-linejoin="round"/>
+                <path class="sk-fill" d="M50 14 L20 32 L20 68 L50 86 L80 68 L80 32 Z" stroke="#1a1a1a" stroke-width="5" stroke-linejoin="round"/>
                 <path d="M36 48 L46 58 L66 38" stroke="#1a1a1a" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </div>
@@ -61,19 +61,22 @@
     <div class="page-wrap">
         <div class="container full-layout">
             <header class="hero-header">
-                <div class="logo-badge">ChatGPT Team · 官方授权</div>
                 <h1>GPT Team <span class="hero-highlight">兑换中心</span></h1>
                 <p class="hero-subtitle">使用兑换码自助上车，或在质保期内查询重兑资格</p>
-                {% if remaining_spots is not none %}
-                <div class="spots-badge">
-                    <i data-lucide="users" style="width: 14px; height: 14px;"></i>
-                    常规剩余名额 <span class="seats-count">{{ remaining_spots }}</span> 位
-                </div>
-                {% endif %}
-                {% if welfare_remaining_spots is not none %}
-                <div class="spots-badge welfare-spots-badge">
-                    <i data-lucide="heart-handshake" style="width: 14px; height: 14px;"></i>
-                    福利车位剩余 <span class="seats-count">{{ welfare_remaining_spots }}</span> 位
+                {% if remaining_spots is not none or welfare_remaining_spots is not none %}
+                <div class="spots-row">
+                    {% if remaining_spots is not none %}
+                    <div class="spots-badge">
+                        <i data-lucide="users" style="width: 14px; height: 14px;"></i>
+                        常规剩余名额 <span class="seats-count">{{ remaining_spots }}</span> 位
+                    </div>
+                    {% endif %}
+                    {% if welfare_remaining_spots is not none %}
+                    <div class="spots-badge welfare-spots-badge">
+                        <i data-lucide="heart-handshake" style="width: 14px; height: 14px;"></i>
+                        福利车位剩余 <span class="seats-count">{{ welfare_remaining_spots }}</span> 位
+                    </div>
+                    {% endif %}
                 </div>
                 {% endif %}
             </header>
