@@ -11,7 +11,6 @@
                 <span>Code Workspace</span>
             </div>
             <h2>兑换码工作台</h2>
-            <p>统一管理兑换码生成、批量质保调整、导出与无效码清理，把筛选和维护操作集中在一个工作区完成。</p>
             <div class="page-header-meta">
                 <span class="page-meta-pill">
                     <i data-lucide="hash"></i>
@@ -73,7 +72,6 @@
             <div class="workbench-toolbar-row">
                 <div class="workbench-toolbar-copy">
                     <h3>兑换码筛选与操作</h3>
-                    <p>先按状态或关键词缩小范围，再处理导出、列设置和失效码扫描，避免在长表格中反复查找。</p>
                 </div>
                 <div class="workbench-toolbar-actions">
                     <button onclick="exportCodes()" class="btn btn-secondary btn-sm">
@@ -123,7 +121,6 @@
             <div class="table-section-head">
                 <div class="table-section-copy">
                     <h3>兑换码明细</h3>
-                    <p>{% if search or status_filter %}当前结果已按筛选条件收窄，可继续做批量质保或删除操作。{% else %}集中查看兑换码生命周期、使用情况与质保状态，适合做高频巡检和批量维护。{% endif %}</p>
                 </div>
                 <div class="table-section-meta">
                     {% if search %}
