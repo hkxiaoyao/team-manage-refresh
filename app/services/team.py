@@ -2495,31 +2495,7 @@ class TeamService:
                     "Team账号受限: 官方拦截下发(响应空列表)，请检查账单/风控状态",
                 )
 
-            # 5. 更新成员数并二次校验邀请是否真的生效 (循环检测 3 次，防止接口返回 200 但实际延迟入库)
-            is_verified = False
-            for i in range(3):
-                await asyncio.sleep(5)
-                sync_res = await self.sync_team_info(team_id, db_session)
-                member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
-                if normalized_email in member_emails:
-                    is_verified = True
-                    logger.info(f"Team {team_id} [add_member] 同步确认成功 (尝试第 {i+1} 次)")
-                    break
-                if i < 2:
-                    logger.warning(f"Team {team_id} [add_member] 尚未见到成员 {normalized_email}，准备第 {i+2} 次重试...")
-
-            if not is_verified:
-                logger.error(f"检测到“虚假成功”: Team {team_id} 发送邀请返回成功，但经过 3 次同步校验均未见该邮箱 {normalized_email}")
-                # 标记错误
-                await self._handle_api_error({"success": False, "error": "邀请发送成功但同步列表未见成员", "error_code": "ghost_success"}, team, db_session)
-                return self._admin_error(
-                    "ghost_success",
-                    "邀请发送成功但 3 次同步成员列表校验均失败，该 Team 账号可能存在延迟或异常。建议稍后手动同步。",
-                )
-
-            await db_session.commit()
-
-            # 6. 标记为"后台手工邀请"白名单成员，自动踢人非授权成员时不会被误杀。
+            # 5. 标记为"后台手工邀请"白名单成员，自动踢人非授权成员时不会被误杀。
             # 状态用 invited 兜底，下一轮 sync 会按真实成员关系更新为 joined。
             await self.upsert_team_email_mapping(
                 team_id=team_id,
@@ -2533,8 +2509,22 @@ class TeamService:
 
             logger.info(f"添加成员成功: {normalized_email} -> Team {team_id}")
 
-            # 7. 请求成功，重置错误状态
+            # 6. 请求成功，重置错误状态
             await self._reset_error_status(team, db_session)
+
+            # 7. 异步校验"虚假成功"：发邀请的接口偶尔返回 200 但成员列表不立即出现，
+            # 之前是同步轮询 3 次 (最长阻塞 15s)，列表延迟时会让管理员看到“邀请发送失败”
+            # 并把整个 Team 标记为 error，即便邮件实际已经发到客户邮箱。
+            # 这里改成后台校验，与兑换码邀请保持同样行为：HTTP 立即返回，后台 15s 内
+            # 仍未见到该邮箱才标记 ghost_success。
+            try:
+                asyncio.create_task(
+                    self._background_verify_admin_invite(team_id, normalized_email)
+                )
+            except RuntimeError:
+                logger.warning(
+                    f"无法调度后台校验任务 (team={team_id}, email={normalized_email})"
+                )
 
             return {
                 "success": True,
@@ -2551,6 +2541,54 @@ class TeamService:
                 "invite_failed",
                 "添加成员失败，请稍后重试",
             )
+
+    async def _background_verify_admin_invite(self, team_id: int, email: str) -> None:
+        """后台异步校验后台手工邀请是否真正下发。
+
+        OpenAI 邀请接口偶尔会返回 200 但成员列表延迟入库（甚至完全不入库 = ghost_success）。
+        本方法在邀请请求返回成功后由 add_team_member 调度，最多三次轮询同步 Team 成员，
+        若 15s 内仍未见到该邮箱则将 Team 标记为 error，等待管理员排查。
+        """
+        # 延迟 import 防止循环引用
+        from app.database import AsyncSessionLocal
+
+        normalized_email = (email or "").lower()
+        async with AsyncSessionLocal() as db_session:
+            try:
+                is_verified = False
+                for i in range(3):
+                    await asyncio.sleep(5)
+                    sync_res = await self.sync_team_info(team_id, db_session)
+                    member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
+                    if normalized_email in member_emails:
+                        is_verified = True
+                        logger.info(
+                            f"Team {team_id} [admin_invite_bg] 同步确认成功 (尝试第 {i+1} 次)"
+                        )
+                        break
+                    if i < 2:
+                        logger.warning(
+                            f"Team {team_id} [admin_invite_bg] 尚未见到成员 {normalized_email}，"
+                            f"准备第 {i+2} 次重试..."
+                        )
+
+                if not is_verified:
+                    logger.error(
+                        f"检测到“虚假成功”: Team {team_id} 后台邀请发送成功但 15s 后仍查不到成员 {normalized_email}"
+                    )
+                    target_team = await db_session.get(Team, team_id)
+                    if target_team:
+                        await self._handle_api_error(
+                            {
+                                "success": False,
+                                "error": "邀请发送成功但 3 次同步均未见成员",
+                                "error_code": "ghost_success",
+                            },
+                            target_team,
+                            db_session,
+                        )
+            except Exception as exc:
+                logger.error(f"后台邀请校验发生异常 (team={team_id}, email={normalized_email}): {exc}")
 
     async def add_team_members(
         self,

@@ -1787,6 +1787,67 @@ class TeamServiceBulkInviteTests(unittest.IsolatedAsyncioTestCase):
             statuses = {item["email"]: item["status"] for item in result["results"]}
             self.assertEqual(statuses["second@example.com"], "no_seat")
 
+    async def test_add_team_member_returns_success_without_blocking_on_verification(self):
+        """单邮箱后台邀请：send_invite 返回成功后立即返回，不再同步阻塞 15s 等成员同步。
+
+        修复前的行为是：同步轮询 3 次 (sleep 5s 每次)，一旦未在 15s 内看到邮件
+        就把整个 Team 标为 error 并返回失败，即便邮件已经实际发出。
+        """
+        await self._seed_team(current_members=1, max_members=5)
+        team_service = TeamService()
+
+        async def stub_sync(team_id, db_session, force_refresh=False):
+            return {
+                "success": True,
+                "message": "ok",
+                "member_emails": ["existing@example.com"],
+                "error": None,
+            }
+
+        async def stub_ensure_token(*args, **kwargs):
+            return "access-token"
+
+        async def stub_send_invite(*args, **kwargs):
+            return {
+                "success": True,
+                "data": {"account_invites": [{"email_address": "newuser@example.com"}]},
+                "error": None,
+            }
+
+        async def stub_reset(*args, **kwargs):
+            return None
+
+        scheduled = []
+
+        async def stub_bg_verify(team_id, email):
+            scheduled.append((team_id, email))
+
+        async with self.session_factory() as session:
+            with patch.object(team_service, "sync_team_info", new=stub_sync), \
+                 patch.object(team_service, "ensure_access_token", new=stub_ensure_token), \
+                 patch.object(team_service.chatgpt_service, "send_invite", new=stub_send_invite), \
+                 patch.object(team_service, "_reset_error_status", new=stub_reset), \
+                 patch.object(team_service, "_background_verify_admin_invite", new=stub_bg_verify):
+                start = asyncio.get_event_loop().time()
+                result = await team_service.add_team_member(
+                    101, "newuser@example.com", session
+                )
+                elapsed = asyncio.get_event_loop().time() - start
+
+            # 必须立即返回（远低于旧实现的 15s）
+            self.assertLess(elapsed, 1.0, f"add_team_member 阻塞了 {elapsed:.2f}s, 不应同步等待")
+            self.assertTrue(result["success"], f"应返回成功: {result}")
+            self.assertEqual(result["status"], "invited")
+            self.assertEqual(result["email"], "newuser@example.com")
+            # 调度了后台校验
+            await asyncio.sleep(0)  # 让 create_task 真正进入 ready 队列
+            self.assertEqual(scheduled, [(101, "newuser@example.com")])
+
+            # Team 状态没有被翻成 error（旧行为会在同步校验失败时翻成 error）
+            async with self.session_factory() as session2:
+                team = await session2.get(Team, 101)
+                self.assertNotEqual(team.status, "error")
+
     async def test_add_team_members_stops_after_fatal_error(self):
         await self._seed_team(current_members=1, max_members=5)
         team_service = TeamService()
