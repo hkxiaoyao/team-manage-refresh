@@ -44,6 +44,9 @@ class TeamService:
         self.chatgpt_service = chatgpt_service
         self.token_parser = TokenParser()
         self.jwt_parser = JWTParser()
+        # asyncio.create_task 仅持弱引用，需要一个 set 把后台任务挂住，
+        # 否则 GC 可能在任务跑完前回收 Task 对象，导致后台校验静默丢失。
+        self._background_tasks: set = set()
 
     def _parse_remote_expires_at(self, expires_at_raw: Optional[str]) -> Optional[datetime]:
         """将 OpenAI 返回的 expires_at 解析为本地时区语义的 naive datetime。"""
@@ -2518,9 +2521,12 @@ class TeamService:
             # 这里改成后台校验，与兑换码邀请保持同样行为：HTTP 立即返回，后台 15s 内
             # 仍未见到该邮箱才标记 ghost_success。
             try:
-                asyncio.create_task(
+                bg_task = asyncio.create_task(
                     self._background_verify_admin_invite(team_id, normalized_email)
                 )
+                # 强引用避免 GC 提前回收 Task；任务结束后自动从集合移除。
+                self._background_tasks.add(bg_task)
+                bg_task.add_done_callback(self._background_tasks.discard)
             except RuntimeError:
                 logger.warning(
                     f"无法调度后台校验任务 (team={team_id}, email={normalized_email})"
