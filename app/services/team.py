@@ -2548,51 +2548,58 @@ class TeamService:
                 "添加成员失败，请稍后重试",
             )
 
+    # 后台邀请校验：每隔 5s 轮询一次成员列表，最多 12 次（共 60s 窗口）。
+    # OpenAI 邀请列表 API 在新邀请下发后存在不可控延迟（实测可达 30s+），
+    # 旧实现 15s 窗口太短导致 ghost_success 误报。
+    _ADMIN_INVITE_VERIFY_ATTEMPTS = 12
+    _ADMIN_INVITE_VERIFY_INTERVAL_SECONDS = 5
+
     async def _background_verify_admin_invite(self, team_id: int, email: str) -> None:
         """后台异步校验后台手工邀请是否真正下发。
 
-        OpenAI 邀请接口偶尔会返回 200 但成员列表延迟入库（甚至完全不入库 = ghost_success）。
-        本方法在邀请请求返回成功后由 add_team_member 调度，最多三次轮询同步 Team 成员，
-        若 15s 内仍未见到该邮箱则将 Team 标记为 error，等待管理员排查。
+        策略：邀请请求返回成功后，每 5s 轮询一次 Team 成员列表，最多 60s。
+        - 见到该邮箱即结束
+        - 60s 内未见到只 logger.error 留痕，**不再把 Team 标记为 error**：
+          OpenAI 实际丢邀请的 ghost_success 是极少数情况，而列表延迟更常见。
+          本地 team_email_mapping 已经记录 is_admin_invited=True 兜底，下次扫描
+          仍会保护该成员；真要是邀请被丢，missing_sync_count 机制会在多轮扫描
+          后兜底处理，不会让 Team 状态因为单次邀请的列表延迟突然翻成异常。
         """
         # 延迟 import 防止循环引用
         from app.database import AsyncSessionLocal
 
         normalized_email = (email or "").lower()
+        attempts = self._ADMIN_INVITE_VERIFY_ATTEMPTS
+        interval = self._ADMIN_INVITE_VERIFY_INTERVAL_SECONDS
         async with AsyncSessionLocal() as db_session:
             try:
                 is_verified = False
-                for i in range(3):
-                    await asyncio.sleep(5)
+                for i in range(attempts):
+                    await asyncio.sleep(interval)
                     sync_res = await self.sync_team_info(team_id, db_session)
                     member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                     if normalized_email in member_emails:
                         is_verified = True
                         logger.info(
-                            f"Team {team_id} [admin_invite_bg] 同步确认成功 (尝试第 {i+1} 次)"
+                            f"Team {team_id} [admin_invite_bg] 同步确认成功 "
+                            f"(尝试第 {i+1}/{attempts} 次, 用时 ~{(i+1)*interval}s)"
                         )
                         break
-                    if i < 2:
-                        logger.warning(
+                    if i < attempts - 1:
+                        logger.info(
                             f"Team {team_id} [admin_invite_bg] 尚未见到成员 {normalized_email}，"
-                            f"准备第 {i+2} 次重试..."
+                            f"准备第 {i+2}/{attempts} 次重试..."
                         )
 
                 if not is_verified:
+                    # 仅记录日志，不翻 Team 状态。
+                    # 之前的 _handle_api_error(ghost_success) 会把 Team 标为 error，
+                    # 但实际上列表延迟比真正 ghost_success 常见得多，会造成大量误报。
                     logger.error(
-                        f"检测到“虚假成功”: Team {team_id} 后台邀请发送成功但 15s 后仍查不到成员 {normalized_email}"
+                        f"Team {team_id} [admin_invite_bg] {attempts*interval}s 内仍未在成员列表中"
+                        f"看到 {normalized_email}。本地 mapping 已记录 admin_invited，"
+                        f"等待后续同步或人工核查（不自动翻 Team 状态）"
                     )
-                    target_team = await db_session.get(Team, team_id)
-                    if target_team:
-                        await self._handle_api_error(
-                            {
-                                "success": False,
-                                "error": "邀请发送成功但 3 次同步均未见成员",
-                                "error_code": "ghost_success",
-                            },
-                            target_team,
-                            db_session,
-                        )
             except Exception as exc:
                 logger.error(f"后台邀请校验发生异常 (team={team_id}, email={normalized_email}): {exc}")
 

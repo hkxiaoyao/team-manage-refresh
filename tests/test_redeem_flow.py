@@ -1848,6 +1848,40 @@ class TeamServiceBulkInviteTests(unittest.IsolatedAsyncioTestCase):
                 team = await session2.get(Team, 101)
                 self.assertNotEqual(team.status, "error")
 
+    async def test_background_verify_admin_invite_does_not_flip_team_to_error(self):
+        """后台校验失败时不应再把 Team 标记为 error。
+
+        之前的实现：邀请发出后同步轮询 3x，15s 内看不到邮箱就 _handle_api_error(ghost_success)
+        把 Team 翻成 error，导致用户报告的"team 变异常、刷新后又变可用"问题。
+        新实现：60s 窗口 + 仅记录日志，不翻状态。
+        """
+        await self._seed_team(current_members=1, max_members=5)
+        team_service = TeamService()
+
+        async def stub_sync(team_id, db_session, force_refresh=False):
+            return {
+                "success": True,
+                "message": "ok",
+                # 永远没有该邮箱，模拟 OpenAI 列表始终延迟
+                "member_emails": ["existing@example.com"],
+                "error": None,
+            }
+
+        # 把校验窗口压缩到接近 0，避免测试等 60s
+        with patch.object(team_service, "sync_team_info", new=stub_sync), \
+             patch.object(team_service, "_ADMIN_INVITE_VERIFY_ATTEMPTS", 2), \
+             patch.object(team_service, "_ADMIN_INVITE_VERIFY_INTERVAL_SECONDS", 0):
+            await team_service._background_verify_admin_invite(101, "missing@example.com")
+
+        # 关键断言：Team 没被翻成 error
+        async with self.session_factory() as session:
+            team = await session.get(Team, 101)
+            self.assertEqual(
+                team.status,
+                "active",
+                f"后台校验未见邮箱时不应把 Team 翻成 error，实际 status={team.status}",
+            )
+
     async def test_add_team_members_stops_after_fatal_error(self):
         await self._seed_team(current_members=1, max_members=5)
         team_service = TeamService()
