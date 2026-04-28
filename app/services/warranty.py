@@ -840,10 +840,25 @@ class WarrantyService:
         - 质保码：按 ``warranty_days + extension_days`` 计算到期。
         - 无质保码：按全局设置 ``auto_kick_usage_period_days + extension_days`` 计算到期。
         起算时间统一沿用 ``warranty_expiration_mode`` 的选择。
+
+        豁免规则：若 ``warranty_auto_kick_enabled_since`` 已记录且兑换码的
+        ``used_at`` < 该时间戳（即开关启用之前就已经使用的兑换码），
+        则永久豁免自动踢人，避免对历史用户突然生效。
         """
         try:
             expiration_mode = await settings_service.get_warranty_expiration_mode(db_session)
             usage_period_days = await self._get_auto_kick_usage_period_days(db_session)
+
+            # 读取主开关的启用起点，用于豁免历史用户。
+            enabled_since: Optional[datetime] = None
+            since_raw = await settings_service.get_setting(
+                db_session, "warranty_auto_kick_enabled_since", ""
+            )
+            if since_raw:
+                try:
+                    enabled_since = datetime.fromisoformat(str(since_raw).strip())
+                except ValueError:
+                    enabled_since = None
 
             # 单次聚合查询每个候选码的 first redeemed_at 和 record_count，避免 N+1。
             agg_subq = (
@@ -874,6 +889,7 @@ class WarrantyService:
 
             now = get_now()
             candidates: List[Dict[str, Any]] = []
+            exempted_count = 0
             for redemption_code, first_redeemed_at, record_count in rows:
                 if expiration_mode == WARRANTY_EXPIRATION_MODE_REFRESH_ON_REDEEM:
                     start_time = redemption_code.used_at
@@ -881,6 +897,15 @@ class WarrantyService:
                     start_time = first_redeemed_at or redemption_code.used_at
                 if not start_time:
                     continue
+
+                # 豁免：开关启用之前就已经使用的兑换码不参与自动踢人。
+                # 以兑换码首次被使用的时间（used_at）与 enabled_since 比较；
+                # 没有 used_at 时 fallback 到 start_time。
+                if enabled_since is not None:
+                    reference_time = redemption_code.used_at or start_time
+                    if reference_time < enabled_since:
+                        exempted_count += 1
+                        continue
 
                 days = self._get_total_usage_days_for_code(redemption_code, usage_period_days)
                 expiry_date = start_time + timedelta(days=days)
@@ -908,6 +933,8 @@ class WarrantyService:
                 "success": True,
                 "codes": candidates,
                 "total": len(candidates),
+                "exempted": exempted_count,
+                "enabled_since": enabled_since.isoformat() if enabled_since else None,
                 "error": None,
             }
         except Exception as e:

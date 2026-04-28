@@ -11,7 +11,6 @@
                 <span>System Hub</span>
             </div>
             <h2>系统中心</h2>
-            <p>把运行参数、自动化任务、导入规则、外部推送和系统配色放到统一中心里维护，减少在分散配置块之间跳转。</p>
             <div class="page-header-meta">
                 <span class="page-meta-pill"><i data-lucide="shield"></i><span>系统配置</span></span>
                 <span class="page-meta-pill"><i data-lucide="bot"></i><span>自动化任务</span></span>
@@ -203,7 +202,10 @@
                 <input type="checkbox" id="warrantyAutoKickEnabled" name="enabled" {% if (warranty_auto_kick_enabled or 'false')|lower in ['1','true','yes','on'] %}checked{% endif %}>
                 <span>启用兑换码过期自动踢人</span>
             </label>
-            <p class="form-help">开启后扫描所有过期且仍绑定 Team 的兑换码，自动踢人并销毁兑换码及全部历史记录。质保码按"质保时长 + 续期天数"判定，无质保码按下方"使用期限"判定。</p>
+            <p class="form-help">开启后扫描过期且仍绑定 Team 的兑换码，自动踢人并销毁兑换码及历史记录。质保码按"质保时长 + 续期天数"判定，无质保码按下方"使用期限"判定。<strong>开关启用之前已使用的兑换码永久豁免</strong>，只对此后新兑换的兑换码生效，避免对老用户突然生效引起争议。</p>
+            {% if warranty_auto_kick_enabled_since %}
+            <p class="form-help" style="color: var(--accent-color, #2563eb);">生效起点：{{ warranty_auto_kick_enabled_since }}</p>
+            {% endif %}
         </div>
 
         <div class="form-group">

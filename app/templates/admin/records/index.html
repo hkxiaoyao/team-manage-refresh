@@ -11,7 +11,6 @@
                 <span>Records Workspace</span>
             </div>
             <h2>使用记录工作台</h2>
-            <p>集中查询兑换记录、定位用户与 Team 关系，并在需要时快速撤回邀请，适合售后排查和历史追踪。</p>
             <div class="page-header-meta">
                 <span class="page-meta-pill">
                     <i data-lucide="database"></i>
@@ -65,7 +64,6 @@
             <div class="workbench-toolbar-row">
                 <div class="workbench-toolbar-copy">
                     <h3>查询条件</h3>
-                    <p>按邮箱、兑换码、Team ID 与日期范围交叉筛选，缩小排查范围后再做单条撤回操作。</p>
                 </div>
                 <div class="workbench-toolbar-actions">
                     <div class="dropdown-wrapper">
@@ -115,7 +113,6 @@
             <div class="table-section-head">
                 <div class="table-section-copy">
                     <h3>使用记录明细</h3>
-                    <p>{% if filters.email or filters.code or filters.team_id or filters.start_date or filters.end_date %}当前列表已应用查询条件，可继续核对记录并执行撤回。{% else %}集中查看用户兑换历史、绑定 Team 与时间线，适合售后追踪和问题回溯。{% endif %}</p>
                 </div>
                 <div class="table-section-meta">
                     {% if filters.email %}

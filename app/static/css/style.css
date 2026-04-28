@@ -4959,18 +4959,51 @@ body.admin-theme .modal {
 
 body.admin-theme .modal-content,
 body.admin-theme .modal-dialog,
-body.admin-theme .modal > div {
+body.admin-theme .modal > div.modal-box,
+body.admin-theme .modal > form {
     background: var(--ca-surface) !important;
     border: var(--ca-border-thick) !important;
     border-radius: var(--ca-r-md) !important;
     box-shadow: var(--ca-shadow-lg) !important;
     backdrop-filter: none !important;
+    overflow: hidden;
 }
 
-body.admin-theme .modal-header {
+/* .modal 本身做为外层容器（已含 overlay 背景 + flex 居中），
+   真正承载卡片样式的是内层 .modal-content / .modal-dialog 或直接的 modal-header/body/footer。
+   对于直接把 modal-header/body/footer 写成 .modal 的直接子元素的结构，
+   让 .modal 自身承担卡片容器的样式。 */
+body.admin-theme .modal:not(.modal-overlay) {
+    /* placeholder, 走下面的规则 */
+}
+
+body.admin-theme .modal-overlay > .modal,
+body.admin-theme .modal > :is(.modal-header, .modal-body, .modal-footer):first-child {
+    /* 让直接挂载 header/body/footer 的 .modal 能正确表现为卡片 */
+}
+
+body.admin-theme .modal-overlay.show > .modal,
+body.admin-theme .modal-overlay > .modal {
+    background: var(--ca-surface) !important;
+    border: var(--ca-border-thick) !important;
+    border-radius: var(--ca-r-md) !important;
+    box-shadow: var(--ca-shadow-lg) !important;
+    overflow: hidden;
+}
+
+body.admin-theme .modal > .modal-header,
+body.admin-theme .modal-content > .modal-header,
+body.admin-theme .modal-dialog > .modal-header {
+    border: none !important;
     border-bottom: var(--ca-border-thick) !important;
     padding: 16px 20px !important;
     background: var(--ca-primary) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
 }
 
 body.admin-theme .modal-header h3,
@@ -4978,16 +5011,73 @@ body.admin-theme .modal-header h2,
 body.admin-theme .modal-title {
     color: var(--ca-ink) !important;
     font-weight: 800 !important;
+    font-size: 1.05rem !important;
+    letter-spacing: -0.01em;
+    margin: 0 !important;
 }
 
-body.admin-theme .modal-body {
+body.admin-theme .modal-close {
+    width: 30px;
+    height: 30px;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    background: var(--ca-surface) !important;
+    color: var(--ca-ink) !important;
+    border: var(--ca-border) !important;
+    border-radius: 999px !important;
+    box-shadow: var(--ca-shadow-xs) !important;
+    font-size: 1.15rem !important;
+    line-height: 1 !important;
+    cursor: pointer;
+    transition: transform var(--ca-tx), box-shadow var(--ca-tx);
+    flex-shrink: 0;
+}
+
+body.admin-theme .modal-close:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: var(--ca-shadow-sm) !important;
+    background: var(--ca-cream) !important;
+}
+
+body.admin-theme .modal-close:active {
+    transform: translate(1px, 1px);
+    box-shadow: none !important;
+}
+
+body.admin-theme .modal > .modal-body,
+body.admin-theme .modal-content > .modal-body,
+body.admin-theme .modal-dialog > .modal-body {
     padding: 20px !important;
+    background: var(--ca-surface) !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
 }
 
-body.admin-theme .modal-footer {
-    border-top: var(--ca-border-thin) !important;
+body.admin-theme .modal > .modal-footer,
+body.admin-theme .modal-content > .modal-footer,
+body.admin-theme .modal-dialog > .modal-footer {
+    border: none !important;
+    border-top: var(--ca-border-thick) !important;
     padding: 14px 20px !important;
     background: var(--ca-cream) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+/* 模态内说明框卡通化 */
+body.admin-theme .modal .alert,
+body.admin-theme .modal-body .alert,
+body.admin-theme .modal-body .info-box {
+    border-radius: var(--ca-r-sm) !important;
+    border: var(--ca-border) !important;
+    box-shadow: var(--ca-shadow-xs) !important;
+    font-weight: 600;
 }
 
 /* ----- Toast ----- */
